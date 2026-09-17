@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import logo from './logo.jpeg';
 import './App.css';
 
 // Initialize Supabase
@@ -45,6 +46,7 @@ const Login = ({ onLogin, loading, errorMessage }) => {
   return (
     <div className="login-shell">
       <form className="login-card" onSubmit={handleSubmit}>
+        <img src={logo} alt="US Pizza" className="login-logo" />
         <div className="eyebrow"><span className="live-dot" /> Live operations</div>
         <h1 className="login-title">US Pizza <span>Operations</span></h1>
         <p className="login-subtitle">Sign in with your admin or manager account.</p>
@@ -393,16 +395,19 @@ function Dashboard({ session, profile, onLogout }) {
       <div className="dashboard-container">
         {/* Header */}
         <header className="dashboard-header">
-          <div>
-            <div className="eyebrow"><span className="live-dot" /> Live operations</div>
-            <h1>US Pizza <span>Operations</span></h1>
-            <p>Real-time visibility across every outlet in your network.</p>
+          <div className="header-brand">
+            <img src={logo} alt="US Pizza" className="header-logo" />
+            <div>
+              <div className="eyebrow"><span className="live-dot" /> Live operations</div>
+              <h1>US Pizza <span>Operations</span></h1>
+              <p>Real-time visibility across every outlet in your network.</p>
+            </div>
           </div>
           <div className="header-badge">
             <span className="header-badge-icon">◒</span>
             <div><strong>Monitoring active</strong><small>Updates automatically</small></div>
           </div>
-          {pushSupported && (
+          {(pushSupported || needsIosInstall) && (
             <button
               type="button"
               className={`push-toggle ${pushSubscribed ? 'push-on' : ''}`}
