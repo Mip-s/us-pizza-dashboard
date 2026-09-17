@@ -52,6 +52,11 @@
 .push-toggle .push-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #b7c0cf; }
 .push-toggle.push-on { color: #1c7d5b; background: #eafbf3; border-color: #bfe9d5; }
 .push-toggle.push-on .push-dot { background: #2caf82; }
+.refresh-button { display: flex; align-items: center; gap: 8px; color: #65738a; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; font-size: 12px; font-weight: 700; padding: 13px 16px; box-shadow: 0 8px 24px #203a6410; transition: .15s ease; }
+.refresh-button:hover:not(:disabled) { border-color: #aebbe6; color: var(--blue); }
+.refresh-button:disabled { cursor: default; opacity: .65; }
+.refresh-icon { display: inline-block; font-size: 14px; line-height: 1; }
+.refresh-icon.spinning { animation: spin .8s linear infinite; }
 .push-error { color: #bd3446; background: #fff0f1; border: 1px solid #f3c6cc; border-radius: 10px; font-size: 13px; margin: -28px 0 28px; padding: 10px 14px; }
 .section-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 18px; }
 .section-heading h2 { font-size: 24px; letter-spacing: -.03em; margin: 6px 0 0; }

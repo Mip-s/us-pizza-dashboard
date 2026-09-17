@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import logo from './logo.jpeg';
 import './App.css';
@@ -117,6 +117,7 @@ function Dashboard({ session, profile, onLogout }) {
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   // iOS only supports Web Push for a site installed via "Add to Home
   // Screen" (running standalone), not a regular Safari tab. Detect this
@@ -198,24 +199,45 @@ function Dashboard({ session, profile, onLogout }) {
     }
   };
 
+  const fetchOutlets = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('outlet_alert_status')
+        .select('*')
+        .order('overall_status', { ascending: false });
+
+      if (error) throw error;
+      setOutlets(data || []);
+    } catch (error) {
+      console.error('Error fetching outlets:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchChannelStatus = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('outlet_status')
+        .select('*');
+
+      if (error) throw error;
+      setChannelRows(data || []);
+    } catch (error) {
+      console.error('Error fetching channel status:', error);
+    }
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchOutlets(), fetchChannelStatus()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-    // Fetch initial outlet statuses
-    const fetchOutlets = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('outlet_alert_status')
-          .select('*')
-          .order('overall_status', { ascending: false });
-
-        if (error) throw error;
-        setOutlets(data || []);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching outlets:', error);
-        setLoading(false);
-      }
-    };
-
     fetchOutlets();
 
     // Subscribe to real-time changes in outlet_alert_messages
@@ -253,23 +275,10 @@ function Dashboard({ session, profile, onLogout }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchOutlets]);
 
   useEffect(() => {
     // Fetch initial per-channel status (POS / KDS / SOK / ODS) for every outlet
-    const fetchChannelStatus = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('outlet_status')
-          .select('*');
-
-        if (error) throw error;
-        setChannelRows(data || []);
-      } catch (error) {
-        console.error('Error fetching channel status:', error);
-      }
-    };
-
     fetchChannelStatus();
 
     // Keep channel status live: upsert on change, drop on delete
@@ -301,7 +310,7 @@ function Dashboard({ session, profile, onLogout }) {
     return () => {
       channelSubscription.unsubscribe();
     };
-  }, []);
+  }, [fetchChannelStatus]);
 
   // Group channel status rows by outlet, then by channel (pos/kds/kiosk/online)
   const channelsByOutlet = channelRows.reduce((acc, row) => {
@@ -407,6 +416,16 @@ function Dashboard({ session, profile, onLogout }) {
             <span className="header-badge-icon">◒</span>
             <div><strong>Monitoring active</strong><small>Updates automatically</small></div>
           </div>
+          <button
+            type="button"
+            className="refresh-button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh outlet and channel status now"
+          >
+            <span className={`refresh-icon ${refreshing ? 'spinning' : ''}`}>⟳</span>
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           {(pushSupported || needsIosInstall) && (
             <button
               type="button"
