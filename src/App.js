@@ -86,7 +86,7 @@ const Login = ({ onLogin, loading, errorMessage }) => {
 // Toast notification component
 const Toast = ({ message, type, onClose }) => {
   useEffect(() => {
-    const timer = setTimeout(onClose, 5000);
+    const timer = setTimeout(onClose, 6000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
@@ -98,9 +98,25 @@ const Toast = ({ message, type, onClose }) => {
   }[type] || 'toast-info';
 
   return (
-    <div className={`toast ${tone} animate-slide-in`}>
+    <div
+      className={`toast ${tone} animate-slide-in`}
+      onClick={onClose}
+      role="alert"
+      title="Click to dismiss"
+    >
       <span className="toast-dot" aria-hidden="true" />
-      {message}
+      <span className="toast-text">{message}</span>
+      <button
+        type="button"
+        className="toast-close"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        aria-label="Close notification"
+      >
+        ×
+      </button>
     </div>
   );
 };

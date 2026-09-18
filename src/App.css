@@ -120,7 +120,17 @@
 .last-update span { font-weight: 700; }
 .empty-state { display: grid; place-items: center; gap: 9px; min-height: 210px; color: var(--muted); background: var(--surface); border: 1px dashed #cbd5e4; border-radius: 16px; font-size: 13px; }
 .empty-state strong { color: var(--ink); font-size: 16px; }.empty-icon { font-size: 32px; color: var(--accent); opacity: .6; }.loading-spinner { width: 25px; height: 25px; border: 3px solid #f5d7dc; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
-.toast-stack { position: fixed; z-index: 50; top: 22px; right: 22px; width: min(360px, calc(100vw - 44px)); }.toast { display: flex; align-items: center; gap: 10px; color: white; border-radius: 12px; box-shadow: 0 12px 28px #203a6430; font-size: 13px; margin-bottom: 9px; padding: 14px 16px; }.toast-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #ffffffaa; }.toast-critical { background: #c83e50; }.toast-warning { background: #c98b22; }.toast-success { background: #20966f; }.toast-info { background: var(--blue); }
+.toast-stack { position: fixed; z-index: 50; top: 22px; right: 22px; width: min(380px, calc(100vw - 44px)); }
+.toast { display: flex; align-items: center; gap: 10px; color: white; border-radius: 12px; box-shadow: 0 12px 28px #203a6430; font-size: 13px; margin-bottom: 9px; padding: 12px 14px; cursor: pointer; transition: transform 0.15s ease, opacity 0.15s ease; user-select: none; }
+.toast:hover { transform: scale(1.01); opacity: 0.95; }
+.toast-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #ffffffaa; }
+.toast-text { flex: 1 1 auto; line-height: 1.4; }
+.toast-close { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; color: white; background: rgba(255, 255, 255, 0.2); border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 700; line-height: 1; padding: 0; margin-left: 4px; transition: background 0.15s ease; }
+.toast-close:hover { background: rgba(255, 255, 255, 0.35); }
+.toast-critical { background: #c83e50; }
+.toast-warning { background: #c98b22; }
+.toast-success { background: #20966f; }
+.toast-info { background: var(--blue); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes slide-in { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 .animate-slide-in { animation: slide-in .3s ease-out; }
