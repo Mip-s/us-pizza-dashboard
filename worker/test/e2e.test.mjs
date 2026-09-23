@@ -16,7 +16,7 @@ async function reset() {
   await db.batch([
     ...['outlets','stations','tokens','station_state','outlet_state','downtime_log','alerts','meta'].map(t => db.prepare(`DELETE FROM ${t}`)),
     db.prepare(`INSERT INTO outlets VALUES ('o-004','004','US Pizza SS15','MY',?, '00:00','00:00')`).bind(ALLDAY),
-    ...[['pos','POS-1'],['kds','KDS-1'],['kds','KDS-2'],['online','grab']].map(([c,s]) =>
+    ...[['pos','POS-1'],['kds','KDS-1'],['kds','KDS-2'],['delivery','grab']].map(([c,s]) =>
       db.prepare('INSERT INTO stations VALUES (?,?,?)').bind('o-004', c, s)),
     db.prepare('INSERT INTO tokens VALUES (?, ?)').bind(await sha256Hex(TOKEN), 'o-004'),
   ]);

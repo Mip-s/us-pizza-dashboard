@@ -12,7 +12,10 @@ export const CONFIG = {
 const MIN = 60 * 1000;
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
-export const CHANNEL_LABEL = { pos: 'POS', kds: 'KDS', kiosk: 'SOK', online: 'ODS' };
+// Channels: pos = POS terminal, kds = kitchen display, kiosk = self-order kiosk (SOK),
+// ods = order display screen (TV), delivery = food delivery platforms (Grab / foodpanda / ShopeeFood)
+export const CHANNELS = ['pos', 'kds', 'kiosk', 'ods', 'delivery'];
+export const CHANNEL_LABEL = { pos: 'POS', kds: 'KDS', kiosk: 'SOK', ods: 'ODS', delivery: 'Food Delivery' };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,9 +74,10 @@ export function isOutletOpen(outlet, now = Date.now()) {
 // Severity (port of public.get_channel_severity)
 // ---------------------------------------------------------------------------
 export function channelSeverity(channel, idleMinutes) {
-  const chan = { pos: 'pos', online: 'ods', kds: 'kds', kiosk: 'sok' }[channel] || channel;
-  if (idleMinutes >= 60) return chan === 'sok' ? 'high' : 'critical';
-  if (idleMinutes >= 30) return ['pos', 'kds'].includes(chan) ? 'critical' : chan === 'ods' ? 'high' : 'medium';
+  // pos/kds stop orders being made; delivery loses online orders; kiosk/ods (TV) are inconveniences
+  const chan = { online: 'delivery' }[channel] || channel;
+  if (idleMinutes >= 60) return ['kiosk', 'ods'].includes(chan) ? 'high' : 'critical';
+  if (idleMinutes >= 30) return ['pos', 'kds'].includes(chan) ? 'critical' : chan === 'delivery' ? 'high' : 'medium';
   if (idleMinutes >= 20) return ['pos', 'kds'].includes(chan) ? 'high' : 'medium';
   return 'medium';
 }
@@ -113,7 +117,7 @@ export function composeAlert(outletName, overall, stations) {
   const fully = [];
   const partially = [];
   let posFullyDown = false;
-  for (const chan of ['pos', 'kds', 'kiosk', 'online']) {
+  for (const chan of CHANNELS) {
     const c = byChan[chan];
     if (!c || c.confirmed === 0) continue;
     const label = `${CHANNEL_LABEL[chan] || chan.toUpperCase()} (${c.confirmed}/${c.total})`;
@@ -145,7 +149,7 @@ export function composeAlert(outletName, overall, stations) {
 //
 // Expected Telegraf tags:
 //   global:  outlet_code, pos_station (e.g. "POS-1")
-//   ping:    peer_channel ("kds" | "kiosk"), peer_station ("KDS-1")
+//   ping:    peer_channel ("kds" | "kiosk" | "ods"), peer_station ("KDS-1")
 // Metrics used:
 //   procstat_lookup.running  -> POS app running (>0)
 //   ping.result_code / percent_packet_loss -> peer device reachable

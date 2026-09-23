@@ -18,13 +18,18 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // Channel metadata: maps raw DB channel values to display labels/order
+// ODS = order display screen (TV); Food Delivery = Grab / foodpanda / ShopeeFood
 const CHANNEL_META = {
   pos: { label: 'POS', order: 1 },
   kds: { label: 'KDS', order: 2 },
   kiosk: { label: 'SOK', order: 3 },
-  online: { label: 'ODS', order: 4 },
+  ods: { label: 'ODS', order: 4 },
+  delivery: { label: 'Food Delivery', order: 5 },
 };
-const CHANNEL_ORDER = ['pos', 'kds', 'kiosk', 'online'];
+const CHANNEL_ORDER = ['pos', 'kds', 'kiosk', 'ods', 'delivery'];
+
+// Friendly names for stations that aren't device IDs
+const STATION_LABELS = { grab: 'GrabFood', foodpanda: 'foodpanda', shopee: 'ShopeeFood' };
 
 // Role display labels
 const ROLE_LABELS = {
@@ -128,6 +133,7 @@ function Dashboard({ session, profile, onLogout }) {
   const [expandedChannels, setExpandedChannels] = useState(() => new Set());
   const [toasts, setToasts] = useState([]);
   const [filterStatus, setFilterStatus] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
@@ -312,7 +318,7 @@ function Dashboard({ session, profile, onLogout }) {
     };
   }, [fetchStatus]);
 
-  // Group channel status rows by outlet, then by channel (pos/kds/kiosk/online)
+  // Group channel status rows by outlet, then by channel (pos/kds/kiosk/ods/delivery)
   const channelsByOutlet = channelRows.reduce((acc, row) => {
     if (!acc[row.outlet_id]) acc[row.outlet_id] = {};
     if (!acc[row.outlet_id][row.channel]) acc[row.outlet_id][row.channel] = [];
@@ -322,7 +328,8 @@ function Dashboard({ session, profile, onLogout }) {
 
   const getChannelSummaries = (outletId) => {
     const channels = channelsByOutlet[outletId] || {};
-    return CHANNEL_ORDER.map((key) => {
+    // Only show channels this outlet actually has (e.g. most outlets have no SOK / ODS)
+    return CHANNEL_ORDER.filter((key) => (channels[key] || []).length > 0).map((key) => {
       const stations = (channels[key] || []).slice().sort((a, b) => a.station.localeCompare(b.station));
       // Only 'confirmed' counts as down. 'suspected' is an internal grace
       // period before confirmation and is intentionally treated the same
@@ -356,9 +363,13 @@ function Dashboard({ session, profile, onLogout }) {
   const getEffectiveStatus = (outlet) => outlet.overall_status || 'UNMONITORED';
 
   // Filter outlets by status (handle null overall_status)
-  const filteredOutlets = filterStatus === 'ALL'
-    ? outlets
-    : outlets.filter((o) => getEffectiveStatus(o) === filterStatus);
+  // Status filter + free-text search on outlet name / code / region
+  const query = searchQuery.trim().toLowerCase();
+  const filteredOutlets = outlets.filter((o) => {
+    if (filterStatus !== 'ALL' && getEffectiveStatus(o) !== filterStatus) return false;
+    if (!query) return true;
+    return [o.outlet_name, o.code, o.region].some((v) => String(v || '').toLowerCase().includes(query));
+  });
 
   const statusStats = {
     CRITICAL_DOWN: outlets.filter((o) => getEffectiveStatus(o) === 'CRITICAL_DOWN').length,
@@ -477,6 +488,21 @@ function Dashboard({ session, profile, onLogout }) {
         </div>
 
         {/* Filter Buttons */}
+        <div className="search-row">
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Search outlets by name, code or area…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search outlets"
+          />
+          {query && (
+            <span className="search-count">
+              {filteredOutlets.length} match{filteredOutlets.length === 1 ? '' : 'es'}
+            </span>
+          )}
+        </div>
         <div className="filter-row">
           <span className="filter-label">Filter by status</span>
           <div className="filter-buttons">
@@ -518,7 +544,7 @@ function Dashboard({ session, profile, onLogout }) {
           <div className="empty-state">
             <div className="empty-icon">⌁</div>
             <strong>No outlets found</strong>
-            <div>Try selecting a different status filter.</div>
+            <div>{query ? `Nothing matches "${searchQuery.trim()}". Try another name or clear the search.` : 'Try selecting a different status filter.'}</div>
           </div>
         ) : (
           <div className="outlets-grid">
@@ -551,7 +577,7 @@ function Dashboard({ session, profile, onLogout }) {
                   )}
                 </div>
 
-                {/* Channel Breakdown: POS / KDS / SOK / ODS */}
+                {/* Channel Breakdown: POS / KDS / SOK / ODS / Food Delivery */}
                 <div className="channel-grid">
                   {channelSummaries.map((channel) => {
                     const hasIssue = channel.downCount > 0;
@@ -593,7 +619,7 @@ function Dashboard({ session, profile, onLogout }) {
                               return (
                                 <div key={s.station} className="station-row">
                                   <span className={`station-dot ${isDown ? 'station-down' : isUnknown ? 'station-unknown' : 'station-ok'}`} />
-                                  <span className="station-name">{s.station}</span>
+                                  <span className="station-name">{STATION_LABELS[s.station] || s.station}</span>
                                   <span className="station-status">
                                     {isDown ? 'down' : isUnknown ? 'not monitored' : 'normal'}
                                     {s.last_seen_at && (

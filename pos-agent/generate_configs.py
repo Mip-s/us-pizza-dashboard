@@ -52,8 +52,8 @@ def load_devices(path):
 
 
 def ping_blocks(devs):
-    """Numbered KDS-n / SOK-n entries, matching the stations in Supabase."""
-    blocks, kds_n, sok_n, seen_kds = [], 0, 0, set()
+    """Numbered KDS-n / SOK-n / ODS-n entries, matching the stations in Supabase."""
+    blocks, kds_n, sok_n, ods_n = [], 0, 0, 0
     for dtype, ip in devs:
         if not dtype:
             continue
@@ -63,6 +63,10 @@ def ping_blocks(devs):
         elif dtype == "Kiosk":
             sok_n += 1
             channel, station = "kiosk", f"SOK-{sok_n}"
+        elif re.fullmatch(r"ODS\s*\d*|Order Display.*", dtype, re.I):
+            # ODS = order display screen (TV) — must match an "ods" station in Supabase outlet_stations
+            ods_n += 1
+            channel, station = "ods", f"ODS-{ods_n}"
         else:
             continue
         if ip:
@@ -90,7 +94,7 @@ def ping_blocks(devs):
                 f'#     peer_channel = "{channel}"\n'
                 f'#     peer_station = "{station}"'
             )
-    return "\n\n".join(blocks) if blocks else "# No KDS / kiosk listed for this outlet"
+    return "\n\n".join(blocks) if blocks else "# No KDS / kiosk / ODS listed for this outlet"
 
 
 def procstat_block(process):
