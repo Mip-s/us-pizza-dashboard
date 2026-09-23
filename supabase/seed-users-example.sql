@@ -22,16 +22,27 @@ insert into profiles (user_id, full_name, role)
 values ('00000000-0000-0000-0000-000000000001', 'Aisyah Rahman', 'operations_team');
 
 -- ---------------------------------------------------------------------
--- 2) Area Manager — oversees multiple outlets (example: Kepong + Sri Petaling).
+-- 2) Area Manager — oversees multiple outlets (example: Kepong + Sri Petaling / North Zone).
 --    Replace '00000000-0000-0000-0000-000000000002' with the real auth user UUID.
 -- ---------------------------------------------------------------------
 insert into profiles (user_id, full_name, role)
 values ('00000000-0000-0000-0000-000000000002', 'Farid Hassan', 'area_manager');
 
-insert into manager_outlets (user_id, outlet_id)
-values
-  ('00000000-0000-0000-0000-000000000002', '44444444-4444-4444-4444-444444444444'), -- US Pizza Kepong
-  ('00000000-0000-0000-0000-000000000002', '33333333-3333-3333-3333-333333333333'); -- US Pizza Sri Petaling
+-- Assign area manager using helper:
+SELECT assign_area_manager(
+  '00000000-0000-0000-0000-000000000002',
+  'Central Region',
+  '+60198765432',
+  'farid@uspizza.com'
+);
+
+-- Link specific outlets to area manager:
+UPDATE outlets
+SET area_manager_id = (SELECT id FROM area_managers WHERE user_id = '00000000-0000-0000-0000-000000000002')
+WHERE outlet_id IN (
+  '44444444-4444-4444-4444-444444444444', -- US Pizza Kepong
+  '33333333-3333-3333-3333-333333333333'  -- US Pizza Sri Petaling
+);
 
 -- ---------------------------------------------------------------------
 -- 3) Outlet Manager — exactly one outlet (example: US Pizza Ampang).
@@ -40,15 +51,19 @@ values
 insert into profiles (user_id, full_name, role)
 values ('00000000-0000-0000-0000-000000000003', 'Nurul Aina', 'outlet_manager');
 
-insert into manager_outlets (user_id, outlet_id)
-values ('00000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111'); -- US Pizza Ampang
+-- Assign outlet manager using helper:
+SELECT assign_outlet_manager(
+  '11111111-1111-1111-1111-111111111111', -- US Pizza Ampang
+  '00000000-0000-0000-0000-000000000003', -- user_id
+  '+60122383479',
+  'nurul@uspizza.com'
+);
 
 -- =====================================================================
 -- Quick verification queries:
 --
 --   select * from profiles;
---   select p.full_name, p.role, mo.outlet_id
---   from profiles p
---   left join manager_outlets mo on mo.user_id = p.user_id
---   order by p.role;
+--   select * from outlet_managers;
+--   select * from area_managers;
+--   select * from outlet_with_managers;
 -- =====================================================================

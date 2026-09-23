@@ -1,0 +1,38 @@
+// Cloudflare Worker config: serves the React app (./build) + /api/* + every-minute monitor cron.
+// Secrets (Worker → Settings → Variables and Secrets): SUPABASE_SERVICE_ROLE_KEY, VAPID_PRIVATE_KEY
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "uptime-us-pizza-dashboard",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./build",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "us-pizza-monitoring",
+      "database_id": "2d96bd1e-fb42-4209-aff8-9ce8de35ffec",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  "vars": {
+    "SUPABASE_URL": "https://yqigynppqmhmsohwrdof.supabase.co",
+    "SUPABASE_ANON_KEY": "sb_publishable_uYlMQegmT74Y3IgEf8E7wg_pA2fPBjq",
+    "VAPID_PUBLIC_KEY": "BGLP1a0KXimha7M4046OLzimiAVw5rmFca8RGz__XPy-MCaUCQnXhbJ6ep7Mdr2TWESXuezQhndQB_qdyXQdgG0",
+    "VAPID_SUBJECT": "mailto:admin@uspizza.com"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

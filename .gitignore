@@ -21,3 +21,18 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# POS monitor
+/node_modules
+/.wrangler
+/.wstate
+/.wrangler
+# secrets — never commit
+heartbeat_tokens*.csv
+/pos-agent/configs
+
+# local Worker secrets (npx wrangler dev)
+.dev.vars
+
+# Local working files from Claude (contain secret tokens) — never commit
+/Claude outputs/

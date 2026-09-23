@@ -1,0 +1,4 @@
+# Copy this file to ".dev.vars" (it is git-ignored) for local `npm run dev:worker`.
+# Only needed if you want the local cron to sync outlets/stations from Supabase.
+SUPABASE_SERVICE_ROLE_KEY=paste-your-service-role-key-here
+VAPID_PRIVATE_KEY=paste-your-vapid-private-key-here

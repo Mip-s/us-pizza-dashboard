@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import logo from './logo.jpeg';
 import './App.css';
@@ -134,6 +134,7 @@ function Dashboard({ session, profile, onLogout }) {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [statusError, setStatusError] = useState('');
 
   // iOS only supports Web Push for a site installed via "Add to Home
   // Screen" (running standalone), not a regular Safari tab. Detect this
@@ -150,7 +151,19 @@ function Dashboard({ session, profile, onLogout }) {
 
     navigator.serviceWorker.register('/sw.js').then(async (registration) => {
       const existing = await registration.pushManager.getSubscription();
-      setPushSubscribed(!!existing);
+      // A subscription made with a different (old) VAPID key can't receive alerts:
+      // treat it as "not subscribed" so the button offers to re-enable.
+      let matchesKey = !!existing;
+      try {
+        const current = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+        const used = existing?.options?.applicationServerKey
+          ? new Uint8Array(existing.options.applicationServerKey)
+          : null;
+        if (used) matchesKey = used.length === current.length && used.every((b, i) => b === current[i]);
+      } catch {
+        /* older browsers don't expose options — assume it matches */
+      }
+      setPushSubscribed(!!existing && matchesKey);
     }).catch((err) => console.error('Service worker registration failed:', err));
   }, []);
 
@@ -170,6 +183,14 @@ function Dashboard({ session, profile, onLogout }) {
       }
 
       const registration = await navigator.serviceWorker.ready;
+      // If this browser still has a subscription made with an older VAPID key
+      // (e.g. after rotating keys), the browser refuses to re-subscribe with the
+      // new key — remove the old one first (from the browser and from Supabase).
+      const existing = await registration.pushManager.getSubscription();
+      if (existing) {
+        await supabase.from('push_subscriptions').delete().eq('endpoint', existing.endpoint);
+        await existing.unsubscribe();
+      }
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -215,118 +236,81 @@ function Dashboard({ session, profile, onLogout }) {
     }
   };
 
-  const fetchOutlets = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('outlet_alert_status')
-        .select('*')
-        .order('overall_status', { ascending: false });
+  // Live status comes from the dashboard's own API (/api/status, Cloudflare D1),
+  // which only returns the outlets this user is allowed to see.
+  const lastAlertIdRef = useRef(0);
+  const failCountRef = useRef(0); // only show the banner after 2 failed refreshes in a row
 
-      if (error) throw error;
-      setOutlets(data || []);
+  const fetchStatus = useCallback(async () => {
+    try {
+      const { data: { session: current } } = await supabase.auth.getSession();
+      if (!current) return;
+      const since = lastAlertIdRef.current;
+      const res = await fetch(`/api/status${since ? `?since=${since}` : ''}`, {
+        headers: { Authorization: `Bearer ${current.access_token}` },
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      failCountRef.current = 0;
+      setStatusError('');
+
+      const order = { CRITICAL_DOWN: 0, DEGRADED: 1, HEALTHY: 2, UNMONITORED: 3 };
+      const sorted = (data.outlets || [])
+        .slice()
+        .sort((a, b) => (order[a.overall_status] ?? 9) - (order[b.overall_status] ?? 9) || a.code.localeCompare(b.code));
+      setOutlets(sorted);
+      setChannelRows(sorted.flatMap((o) => o.stations.map((s) => ({ ...s, outlet_id: o.outlet_id }))));
+
+      // Toasts for alerts raised since the previous poll (not on first load)
+      if (since && data.alerts?.length) {
+        setToasts((prev) => [
+          ...prev,
+          ...data.alerts.map((a) => ({
+            id: `alert-${a.id}`,
+            message: a.message,
+            type: a.overall_status === 'CRITICAL_DOWN' ? 'critical' : a.overall_status === 'DEGRADED' ? 'high' : 'resolved',
+          })),
+        ]);
+      }
+      lastAlertIdRef.current = data.last_alert_id || since;
     } catch (error) {
-      console.error('Error fetching outlets:', error);
+      console.error('Error fetching status:', error);
+      failCountRef.current += 1;
+      if (failCountRef.current < 2) return; // ignore a single blip; keep showing the last good data
+      setStatusError(
+        error instanceof TypeError || /404|Unexpected token/.test(String(error.message))
+          ? 'Live status service is not reachable. (Running locally? Start the Worker with "npx wrangler dev" too.)'
+          : `Could not load live status: ${error.message}`
+      );
     } finally {
       setLoading(false);
-    }
-  }, []);
-
-  const fetchChannelStatus = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('outlet_status')
-        .select('*');
-
-      if (error) throw error;
-      setChannelRows(data || []);
-    } catch (error) {
-      console.error('Error fetching channel status:', error);
     }
   }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([fetchOutlets(), fetchChannelStatus()]);
+      await fetchStatus();
     } finally {
       setRefreshing(false);
     }
   };
 
+  // Poll every 15 seconds (and immediately when the tab becomes visible again)
   useEffect(() => {
-    fetchOutlets();
-
-    // Subscribe to real-time changes in outlet_alert_messages
-    const subscription = supabase
-      .channel('outlet_alerts')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'outlet_alert_messages' },
-        (payload) => {
-          const { outlet_id, overall_status, alert_message } = payload.new;
-
-          // Determine toast type
-          const toastType = overall_status === 'CRITICAL_DOWN' 
-            ? 'critical' 
-            : overall_status === 'DEGRADED' 
-            ? 'high' 
-            : 'resolved';
-
-          // Add toast
-          const toastId = Date.now();
-          setToasts((prev) => [...prev, { id: toastId, message: alert_message, type: toastType }]);
-
-          // Update outlet status
-          setOutlets((prev) =>
-            prev.map((o) =>
-              o.outlet_id === outlet_id
-                ? { ...o, overall_status, alert_message, last_alert_time: new Date().toISOString() }
-                : o
-            )
-          );
-        }
-      )
-      .subscribe();
-
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 15000);
+    const onVisible = () => document.visibilityState === 'visible' && fetchStatus();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
-      subscription.unsubscribe();
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [fetchOutlets]);
-
-  useEffect(() => {
-    // Fetch initial per-channel status (POS / KDS / SOK / ODS) for every outlet
-    fetchChannelStatus();
-
-    // Keep channel status live: upsert on change, drop on delete
-    const rowKey = (row) => `${row.outlet_id}|${row.channel}|${row.station}`;
-    const channelSubscription = supabase
-      .channel('outlet_status_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'outlet_status' },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            const deletedKey = rowKey(payload.old);
-            setChannelRows((prev) => prev.filter((r) => rowKey(r) !== deletedKey));
-            return;
-          }
-
-          const updatedRow = payload.new;
-          const updatedKey = rowKey(updatedRow);
-          setChannelRows((prev) => {
-            const exists = prev.some((r) => rowKey(r) === updatedKey);
-            return exists
-              ? prev.map((r) => (rowKey(r) === updatedKey ? updatedRow : r))
-              : [...prev, updatedRow];
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      channelSubscription.unsubscribe();
-    };
-  }, [fetchChannelStatus]);
+  }, [fetchStatus]);
 
   // Group channel status rows by outlet, then by channel (pos/kds/kiosk/online)
   const channelsByOutlet = channelRows.reduce((acc, row) => {
@@ -344,12 +328,15 @@ function Dashboard({ session, profile, onLogout }) {
       // period before confirmation and is intentionally treated the same
       // as 'normal' here so it never surfaces in the UI or notifications.
       const confirmedCount = stations.filter((s) => s.status === 'confirmed').length;
+      // 'unknown' = no heartbeat has ever reported this station (not monitored yet)
+      const monitored = stations.filter((s) => s.status !== 'unknown').length;
       return {
         key,
         label: CHANNEL_META[key].label,
         stations,
         downCount: confirmedCount,
         total: stations.length,
+        monitored,
       };
     });
   };
@@ -364,19 +351,9 @@ function Dashboard({ session, profile, onLogout }) {
     });
   };
 
-  // Determine an outlet's effective status purely from live channel data:
-  // any confirmed-down channel means the outlet is not healthy (falls back
-  // to the DB-computed severity bucket for CRITICAL_DOWN vs DEGRADED),
-  // otherwise it's HEALTHY. 'suspected' channels never affect this.
-  const getEffectiveStatus = (outlet) => {
-    const channelSummaries = getChannelSummaries(outlet.outlet_id);
-    const hasChannelData = channelSummaries.some((c) => c.total > 0);
-    if (!hasChannelData) return outlet.overall_status || 'HEALTHY';
-
-    const totalConfirmed = channelSummaries.reduce((sum, c) => sum + c.downCount, 0);
-    if (totalConfirmed === 0) return 'HEALTHY';
-    return outlet.overall_status || 'CRITICAL_DOWN';
-  };
+  // Status is computed server-side (/api/status) from live station states:
+  // CRITICAL_DOWN | DEGRADED | HEALTHY | UNMONITORED (no heartbeat received yet).
+  const getEffectiveStatus = (outlet) => outlet.overall_status || 'UNMONITORED';
 
   // Filter outlets by status (handle null overall_status)
   const filteredOutlets = filterStatus === 'ALL'
@@ -387,6 +364,7 @@ function Dashboard({ session, profile, onLogout }) {
     CRITICAL_DOWN: outlets.filter((o) => getEffectiveStatus(o) === 'CRITICAL_DOWN').length,
     DEGRADED: outlets.filter((o) => getEffectiveStatus(o) === 'DEGRADED').length,
     HEALTHY: outlets.filter((o) => getEffectiveStatus(o) === 'HEALTHY').length,
+    UNMONITORED: outlets.filter((o) => getEffectiveStatus(o) === 'UNMONITORED').length,
   };
 
   const getStatusColor = (status) => {
@@ -470,10 +448,13 @@ function Dashboard({ session, profile, onLogout }) {
           </div>
         </header>
         {pushError && <div className="push-error">{pushError}</div>}
+        {statusError && <div className="push-error">{statusError}</div>}
 
         <div className="section-heading">
           <div><span className="section-kicker">Network overview</span><h2>Today's health snapshot</h2></div>
-          <span className="outlet-count">{outlets.length} outlets tracked</span>
+          <span className="outlet-count">
+            {outlets.length - statusStats.UNMONITORED} of {outlets.length} outlets monitored
+          </span>
         </div>
 
         {/* Status Summary Cards */}
@@ -499,7 +480,7 @@ function Dashboard({ session, profile, onLogout }) {
         <div className="filter-row">
           <span className="filter-label">Filter by status</span>
           <div className="filter-buttons">
-          {['ALL', 'CRITICAL_DOWN', 'DEGRADED', 'HEALTHY'].map((status) => (
+          {['ALL', 'CRITICAL_DOWN', 'DEGRADED', 'HEALTHY', 'UNMONITORED'].map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
@@ -544,9 +525,8 @@ function Dashboard({ session, profile, onLogout }) {
             {filteredOutlets.map((outlet) => {
               const channelSummaries = getChannelSummaries(outlet.outlet_id);
               const totalDown = channelSummaries.reduce((sum, c) => sum + c.downCount, 0);
-              const hasChannelData = channelSummaries.some((c) => c.total > 0);
-              const allOperational = hasChannelData && totalDown === 0;
               const effectiveStatus = getEffectiveStatus(outlet);
+              const allOperational = effectiveStatus === 'HEALTHY' && totalDown === 0;
 
               return (
               <div
@@ -576,6 +556,7 @@ function Dashboard({ session, profile, onLogout }) {
                   {channelSummaries.map((channel) => {
                     const hasIssue = channel.downCount > 0;
                     const isEmpty = channel.total === 0;
+                    const notMonitored = !isEmpty && channel.monitored === 0;
                     const expandKey = `${outlet.outlet_id}:${channel.key}`;
                     const isExpanded = expandedChannels.has(expandKey);
                     return (
@@ -583,7 +564,7 @@ function Dashboard({ session, profile, onLogout }) {
                         <button
                           type="button"
                           className={`channel-chip ${
-                            isEmpty ? 'channel-unknown' : hasIssue ? 'channel-down' : 'channel-ok'
+                            isEmpty || notMonitored ? 'channel-unknown' : hasIssue ? 'channel-down' : 'channel-ok'
                           }`}
                           onClick={() => !isEmpty && toggleChannel(outlet.outlet_id, channel.key)}
                           disabled={isEmpty}
@@ -593,6 +574,8 @@ function Dashboard({ session, profile, onLogout }) {
                           <span className="channel-meta">
                             {isEmpty
                               ? 'n/a'
+                              : notMonitored
+                              ? 'not monitored'
                               : hasIssue
                               ? `${channel.downCount}/${channel.total} down`
                               : `${channel.total}/${channel.total} ok`}
@@ -606,11 +589,17 @@ function Dashboard({ session, profile, onLogout }) {
                               // confirmation - treat it visually the same as
                               // 'normal' so it never shows as an issue.
                               const isDown = s.status === 'confirmed';
+                              const isUnknown = s.status === 'unknown';
                               return (
                                 <div key={s.station} className="station-row">
-                                  <span className={`station-dot ${isDown ? 'station-down' : 'station-ok'}`} />
+                                  <span className={`station-dot ${isDown ? 'station-down' : isUnknown ? 'station-unknown' : 'station-ok'}`} />
                                   <span className="station-name">{s.station}</span>
-                                  <span className="station-status">{isDown ? 'confirmed' : 'normal'}</span>
+                                  <span className="station-status">
+                                    {isDown ? 'down' : isUnknown ? 'not monitored' : 'normal'}
+                                    {s.last_seen_at && (
+                                      <small className="station-seen"> · seen {new Date(s.last_seen_at).toLocaleTimeString()}</small>
+                                    )}
+                                  </span>
                                 </div>
                               );
                             })}

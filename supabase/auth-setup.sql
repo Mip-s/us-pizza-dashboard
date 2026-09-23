@@ -28,22 +28,42 @@ create policy "Users can read own profile"
   to authenticated
   using (auth.uid() = user_id);
 
--- 2. Manager <-> outlet assignments (junction table).
---    outlet_manager: exactly one row.
---    area_manager: one row per outlet they oversee.
---    operations_team: no rows needed here (their role alone grants full access).
-create table if not exists manager_outlets (
+-- 2. Manager <-> outlet assignments.
+--    outlet_managers: direct assignment to an outlet.
+--    area_managers: assignment to a region or outlets via area_manager_id.
+--    operations_team: no rows needed (role alone grants full access).
+create table if not exists outlet_managers (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  outlet_id uuid not null,
+  outlet_id uuid not null references outlets(outlet_id) on delete cascade,
+  phone text,
+  email text,
   created_at timestamptz not null default now(),
+  updated_at timestamptz default clock_timestamp(),
   unique (user_id, outlet_id)
 );
 
-alter table manager_outlets enable row level security;
+alter table outlet_managers enable row level security;
 
 create policy "Users can read own outlet assignments"
-  on manager_outlets
+  on outlet_managers
+  for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+create table if not exists area_managers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  region text not null,
+  phone text,
+  email text,
+  created_at timestamptz default clock_timestamp()
+);
+
+alter table area_managers enable row level security;
+
+create policy "Users can read own area assignments"
+  on area_managers
   for select
   to authenticated
   using (auth.uid() = user_id);
@@ -70,8 +90,19 @@ security definer
 stable
 as $$
   select exists (
-    select 1 from manager_outlets
+    -- Direct outlet manager check
+    select 1 from outlet_managers
     where user_id = auth.uid() and outlet_id = target_outlet_id
+    union all
+    -- Direct area manager FK on outlets check
+    select 1 from area_managers am
+    join outlets o on o.area_manager_id = am.id
+    where am.user_id = auth.uid() and o.outlet_id = target_outlet_id
+    union all
+    -- Region-based area manager match check
+    select 1 from area_managers am
+    join outlets o on o.region = am.region
+    where am.user_id = auth.uid() and o.outlet_id = target_outlet_id
   );
 $$;
 
