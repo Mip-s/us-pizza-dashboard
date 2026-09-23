@@ -7,7 +7,7 @@
 //
 // Query: ?since=<alert id>  -> also return alerts newer than that id (for toasts)
 
-import { evaluateOverall } from './core.js';
+import { evaluateOverall, CONFIG } from './core.js';
 
 // D1 can return rare transient errors (and the local simulator does on Windows): retry once.
 async function withRetry(fn) {
@@ -69,9 +69,18 @@ export async function handleStatus(request, env) {
   const stateBy = Object.fromEntries(outletRows.results.map((r) => [r.outlet_id, r]));
   const lastAlertBy = Object.fromEntries(lastAlerts.results.map((r) => [r.outlet_id, r]));
 
+  const now = Date.now();
+  const staleAfter = CONFIG.HEARTBEAT_TIMEOUT_MIN * 60 * 1000;
   const payload = outlets.map((o) => {
     const stations = stationsBy[o.outlet_id] || [];
     const overall = evaluateOverall(stations); // live, from current station states
+    // KDS / SOK / ODS are checked BY the POS. When the POS stops reporting, their last
+    // state is just old news - show them as 'stale' (grey, "no recent data"), not green.
+    const display = (s) =>
+      s.channel !== 'pos' && s.status !== 'unknown' && s.status !== 'confirmed' &&
+      s.last_seen_at && now - s.last_seen_at > staleAfter
+        ? 'stale'
+        : s.status;
     return {
       outlet_id: o.outlet_id,
       code: o.code,
@@ -81,7 +90,7 @@ export async function handleStatus(request, env) {
       alert_message: overall === 'HEALTHY' || overall === 'UNMONITORED' ? null : stateBy[o.outlet_id]?.alert_message || null,
       last_alert_time: lastAlertBy[o.outlet_id]?.created_at || null,
       active_downtime_count: stations.filter((s) => s.status === 'confirmed').length,
-      stations: stations.map(({ channel, station, status, last_seen_at }) => ({ channel, station, status, last_seen_at })),
+      stations: stations.map((s) => ({ channel: s.channel, station: s.station, status: display(s), last_seen_at: s.last_seen_at })),
     };
   });
 

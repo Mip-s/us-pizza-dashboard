@@ -168,3 +168,42 @@ test('status API: returns outlets, stations and new alerts since cursor', async 
 });
 
 test.after(() => dispose());
+
+test('push title puts the down systems first', async () => {
+  const { pushTitle } = await import('../core.js');
+  const st = (channel, station, status) => ({ channel, station, status });
+  const name = 'US Pizza Kota Damansara';
+  assert.equal(
+    pushTitle(name, 'CRITICAL_DOWN', [st('pos', 'POS-1', 'confirmed'), st('kds', 'KDS-1', 'normal')]),
+    '🚨 POS DOWN · US Pizza Kota Damansara'
+  );
+  assert.equal(
+    pushTitle(name, 'DEGRADED', [
+      st('pos', 'POS-1', 'normal'), st('kds', 'KDS-1', 'normal'), st('kds', 'KDS-2', 'confirmed'),
+      st('ods', 'ODS-1', 'confirmed'), st('delivery', 'grab', 'confirmed'), st('delivery', 'shopee', 'normal'),
+      st('kiosk', 'SOK-1', 'unknown'),
+    ]),
+    '⚠️ KDS-2 · ODS · GrabFood DOWN · US Pizza Kota Damansara'
+  );
+  assert.equal(pushTitle(name, 'HEALTHY', [st('pos', 'POS-1', 'normal')]), '✅ BACK ONLINE · US Pizza Kota Damansara');
+  assert.equal(
+    pushTitle(name, 'CRITICAL_DOWN', [st('pos', 'POS-1', 'confirmed'), st('kds', 'KDS-1', 'confirmed'), st('kiosk', 'SOK-1', 'unknown')]),
+    '🚨 ALL SYSTEMS DOWN · US Pizza Kota Damansara'
+  );
+  const now = Date.now();
+  assert.equal(
+    pushTitle(name, 'CRITICAL_DOWN', [
+      { channel: 'pos', station: 'POS-1', status: 'confirmed', last_seen_at: now - 15 * MIN },
+      st('kds', 'KDS-1', 'normal'),
+    ], now),
+    '🚨 ALL SYSTEMS DOWN (NO SIGNAL) · US Pizza Kota Damansara'
+  );
+  // POS app closed but the PC is still reporting -> just POS
+  assert.equal(
+    pushTitle(name, 'CRITICAL_DOWN', [
+      { channel: 'pos', station: 'POS-1', status: 'confirmed', last_seen_at: now - 1 * MIN },
+      st('kds', 'KDS-1', 'normal'),
+    ], now),
+    '🚨 POS DOWN · US Pizza Kota Damansara'
+  );
+});

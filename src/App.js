@@ -337,6 +337,8 @@ function Dashboard({ session, profile, onLogout }) {
       const confirmedCount = stations.filter((s) => s.status === 'confirmed').length;
       // 'unknown' = no heartbeat has ever reported this station (not monitored yet)
       const monitored = stations.filter((s) => s.status !== 'unknown').length;
+      // 'stale' = checked by the POS, but the POS hasn't reported for a while (no recent data)
+      const staleCount = stations.filter((s) => s.status === 'stale').length;
       return {
         key,
         label: CHANNEL_META[key].label,
@@ -344,6 +346,7 @@ function Dashboard({ session, profile, onLogout }) {
         downCount: confirmedCount,
         total: stations.length,
         monitored,
+        staleCount,
       };
     });
   };
@@ -583,6 +586,7 @@ function Dashboard({ session, profile, onLogout }) {
                     const hasIssue = channel.downCount > 0;
                     const isEmpty = channel.total === 0;
                     const notMonitored = !isEmpty && channel.monitored === 0;
+                    const noRecentData = !isEmpty && !notMonitored && !hasIssue && channel.staleCount === channel.monitored;
                     const expandKey = `${outlet.outlet_id}:${channel.key}`;
                     const isExpanded = expandedChannels.has(expandKey);
                     return (
@@ -590,7 +594,7 @@ function Dashboard({ session, profile, onLogout }) {
                         <button
                           type="button"
                           className={`channel-chip ${
-                            isEmpty || notMonitored ? 'channel-unknown' : hasIssue ? 'channel-down' : 'channel-ok'
+                            isEmpty || notMonitored || noRecentData ? 'channel-unknown' : hasIssue ? 'channel-down' : 'channel-ok'
                           }`}
                           onClick={() => !isEmpty && toggleChannel(outlet.outlet_id, channel.key)}
                           disabled={isEmpty}
@@ -604,7 +608,9 @@ function Dashboard({ session, profile, onLogout }) {
                               ? 'not monitored'
                               : hasIssue
                               ? `${channel.downCount}/${channel.total} down`
-                              : `${channel.total}/${channel.total} ok`}
+                              : noRecentData
+                              ? 'no recent data'
+                              : `${channel.total - channel.staleCount}/${channel.total} ok`}
                           </span>
                           {!isEmpty && <span className="channel-caret">{isExpanded ? '▲' : '▼'}</span>}
                         </button>
@@ -615,13 +621,13 @@ function Dashboard({ session, profile, onLogout }) {
                               // confirmation - treat it visually the same as
                               // 'normal' so it never shows as an issue.
                               const isDown = s.status === 'confirmed';
-                              const isUnknown = s.status === 'unknown';
+                              const isUnknown = s.status === 'unknown' || s.status === 'stale';
                               return (
                                 <div key={s.station} className="station-row">
                                   <span className={`station-dot ${isDown ? 'station-down' : isUnknown ? 'station-unknown' : 'station-ok'}`} />
                                   <span className="station-name">{STATION_LABELS[s.station] || s.station}</span>
                                   <span className="station-status">
-                                    {isDown ? 'down' : isUnknown ? 'not monitored' : 'normal'}
+                                    {isDown ? 'down' : s.status === 'stale' ? 'no recent data' : isUnknown ? 'not monitored' : 'normal'}
                                     {s.last_seen_at && (
                                       <small className="station-seen"> · seen {new Date(s.last_seen_at).toLocaleTimeString()}</small>
                                     )}

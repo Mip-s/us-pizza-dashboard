@@ -97,6 +97,55 @@ function groupByChannel(stations) {
   return byChan;
 }
 
+// ---------------------------------------------------------------------------
+// Push notification title: the systems that are down come FIRST, so they are the
+// first thing seen on a lock screen (push notifications can't use bold text).
+//   🚨 POS DOWN · US Pizza Kota Damansara
+//   ⚠️ KDS-2 · ODS DOWN · MFM Kota Damansara
+//   🚨 ALL SYSTEMS DOWN · US Pizza Kota Damansara          (every monitored category down)
+//   🚨 ALL SYSTEMS DOWN (NO SIGNAL) · US Pizza Kota Damansara (POS stopped reporting: power / internet)
+//   ✅ BACK ONLINE · US Pizza Kota Damansara
+// A fully-down channel is named by its category (POS, KDS, Food Delivery);
+// a partly-down one lists the actual stations (KDS-2, GrabFood).
+// ---------------------------------------------------------------------------
+const STATION_LABEL = { grab: 'GrabFood', foodpanda: 'foodpanda', shopee: 'ShopeeFood' };
+
+export function downSystems(stations) {
+  const parts = [];
+  for (const chan of CHANNELS) {
+    const monitored = stations.filter((s) => s.channel === chan && s.status !== 'unknown');
+    const down = monitored.filter((s) => s.status === 'confirmed');
+    if (down.length === 0) continue;
+    if (down.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
+    else parts.push(...down.map((s) => STATION_LABEL[s.station] || s.station).sort());
+  }
+  return parts;
+}
+
+export function pushTitle(outletName, overall, stations, now = Date.now()) {
+  const name = outletName || 'Unknown Outlet';
+  if (overall === 'HEALTHY') return `✅ BACK ONLINE · ${name}`;
+
+  // Outlet went silent: the POS (which also checks every other device) stopped
+  // reporting at all -> likely power / internet loss, nothing at the outlet is visible.
+  const pos = stations.filter((s) => s.channel === 'pos' && s.status !== 'unknown');
+  const silent = pos.length > 0 && pos.every(
+    (s) => s.status === 'confirmed' && s.last_seen_at && now - s.last_seen_at > CONFIG.HEARTBEAT_TIMEOUT_MIN * MIN
+  );
+  if (silent) return `🚨 ALL SYSTEMS DOWN (NO SIGNAL) · ${name}`;
+
+  // Every monitored category is completely down
+  const monitoredChans = [...new Set(stations.filter((s) => s.status !== 'unknown').map((s) => s.channel))];
+  const allDown = monitoredChans.length >= 2 && monitoredChans.every((c) =>
+    stations.filter((s) => s.channel === c && s.status !== 'unknown').every((s) => s.status === 'confirmed')
+  );
+  if (allDown) return `🚨 ALL SYSTEMS DOWN · ${name}`;
+
+  const down = downSystems(stations);
+  const what = down.length ? `${down.join(' · ')} DOWN` : String(overall).replace('_', ' ');
+  return `${overall === 'CRITICAL_DOWN' ? '🚨' : '⚠️'} ${what} · ${name}`;
+}
+
 export function evaluateOverall(stations) {
   const byChan = groupByChannel(stations);
   const chans = Object.keys(byChan);
@@ -303,7 +352,7 @@ export async function runMonitor(db, now = Date.now()) {
         .bind(outletId, overall, message, now),
     ]);
     const alert = await db.prepare('SELECT id FROM alerts WHERE outlet_id = ? ORDER BY id DESC LIMIT 1').bind(outletId).first();
-    alerts.push({ id: alert.id, outlet, overall, message });
+    alerts.push({ id: alert.id, outlet, overall, message, title: pushTitle(outlet.name, overall, stations, now) });
   }
   return alerts;
 }

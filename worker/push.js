@@ -33,7 +33,7 @@ async function recipientUserIds(env, outletId) {
 }
 
 // Returns number of notifications delivered.
-export async function sendAlertPush(env, { outlet, overall, message }) {
+export async function sendAlertPush(env, { outlet, overall, message, title }) {
   if (!env.VAPID_PRIVATE_KEY || !env.VAPID_PUBLIC_KEY) return 0;
   const userIds = await recipientUserIds(env, outlet.outlet_id);
   if (userIds.length === 0) return 0;
@@ -45,7 +45,7 @@ export async function sendAlertPush(env, { outlet, overall, message }) {
     privateKey: env.VAPID_PRIVATE_KEY,
   };
   const data = JSON.stringify({
-    title: `${outlet.name}: ${String(overall).replace('_', ' ')}`,
+    title: title || `${outlet.name}: ${String(overall).replace('_', ' ')}`, // e.g. "🚨 POS DOWN · US Pizza Kota Damansara"
     body: message,
     tag: `outlet-${outlet.outlet_id}`,
     url: '/',
