@@ -15,6 +15,8 @@
 
 * { box-sizing: border-box; }
 
+/* Let the dashboard's own pull-to-refresh handle the gesture (no double refresh / bounce) */
+html, body { overscroll-behavior-y: contain; }
 .dashboard-shell {
   min-height: 100vh;
   color: var(--ink);
@@ -137,6 +139,12 @@
 .toast-warning { background: #c98b22; }
 .toast-success { background: #20966f; }
 .toast-info { background: var(--blue); }
+/* Pull-to-refresh (phones) */
+.pull-indicator { position: fixed; top: -48px; left: 50%; z-index: 50; display: flex; align-items: center; gap: 8px; padding: 9px 16px; color: var(--blue); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 8px 22px #203a6420; font-size: 12px; font-weight: 700; opacity: 0; pointer-events: none; transform: translate(-50%, 0); transition: transform .25s ease, opacity .2s ease; }
+.pull-visible { opacity: 1; }
+.pull-refreshing { transform: translate(-50%, 72px); }
+.pull-arrow { display: inline-grid; place-items: center; width: 16px; height: 16px; font-size: 14px; transition: transform .15s ease; }
+.pull-refreshing .pull-arrow { border: 2px solid #d7ddf0; border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes slide-in { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 .animate-slide-in { animation: slide-in .3s ease-out; }

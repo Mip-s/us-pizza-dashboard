@@ -28,6 +28,9 @@ const CHANNEL_META = {
 };
 const CHANNEL_ORDER = ['pos', 'kds', 'kiosk', 'ods', 'delivery'];
 
+// Pull-to-refresh: how far (px, after resistance) to drag before releasing refreshes
+const PULL_THRESHOLD = 70;
+
 // Friendly names for stations that aren't device IDs
 const STATION_LABELS = { grab: 'GrabFood', foodpanda: 'foodpanda', shopee: 'ShopeeFood' };
 
@@ -306,6 +309,52 @@ function Dashboard({ session, profile, onLogout }) {
     }
   };
 
+  // Pull-to-refresh for phones: at the very top of the page, drag down past the
+  // threshold and let go. Works in the installed (home screen) app too, where the
+  // browser's own pull-to-refresh isn't available.
+  const [pullDistance, setPullDistance] = useState(0);
+  const pullRef = useRef({ startY: null, distance: 0 });
+  const refreshRef = useRef(handleRefresh);
+  refreshRef.current = handleRefresh;
+
+  useEffect(() => {
+    const onStart = (e) => {
+      // only when already scrolled to the top, and with a single finger
+      pullRef.current.startY = window.scrollY <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null;
+      pullRef.current.distance = 0;
+    };
+    const onMove = (e) => {
+      if (pullRef.current.startY === null) return;
+      const dy = e.touches[0].clientY - pullRef.current.startY;
+      if (dy <= 0 || window.scrollY > 0) {
+        pullRef.current.distance = 0;
+        setPullDistance(0);
+        return;
+      }
+      const distance = Math.min(dy * 0.5, 110); // resistance, like native pull-to-refresh
+      pullRef.current.distance = distance;
+      setPullDistance(distance);
+      if (e.cancelable) e.preventDefault(); // stop the page from bouncing while pulling
+    };
+    const onEnd = () => {
+      if (pullRef.current.startY === null) return;
+      const pulledEnough = pullRef.current.distance >= PULL_THRESHOLD;
+      pullRef.current = { startY: null, distance: 0 };
+      setPullDistance(0);
+      if (pulledEnough) refreshRef.current();
+    };
+    window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
+    return () => {
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
+    };
+  }, []);
+
   // Poll every 15 seconds (and immediately when the tab becomes visible again)
   useEffect(() => {
     fetchStatus();
@@ -407,8 +456,24 @@ function Dashboard({ session, profile, onLogout }) {
     }
   };
 
+  const pullVisible = pullDistance > 0 || refreshing;
   return (
     <div className="dashboard-shell">
+      <div
+        className={`pull-indicator ${pullVisible ? 'pull-visible' : ''} ${refreshing ? 'pull-refreshing' : ''}`}
+        style={pullDistance > 0 ? { transform: `translate(-50%, ${pullDistance}px)`, transition: 'none' } : undefined}
+        aria-hidden="true"
+      >
+        <span
+          className="pull-arrow"
+          style={{ transform: `rotate(${refreshing ? 0 : Math.min(pullDistance / PULL_THRESHOLD, 1) * 180}deg)` }}
+        >
+          {refreshing ? '' : '↓'}
+        </span>
+        <span className="pull-text">
+          {refreshing ? 'Refreshing…' : pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh'}
+        </span>
+      </div>
       <div className="dashboard-container">
         {/* Header */}
         <header className="dashboard-header">
