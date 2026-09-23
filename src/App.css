@@ -139,6 +139,10 @@ html, body { overscroll-behavior-y: contain; }
 .toast-warning { background: #c98b22; }
 .toast-success { background: #20966f; }
 .toast-info { background: var(--blue); }
+/* New-version banner */
+.update-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 12px 14px; color: var(--blue); background: var(--blue-light); border: 1px solid #c9d3f0; border-radius: 12px; font-size: 13px; font-weight: 600; }
+.update-banner button { flex: 0 0 auto; border: 0; border-radius: 9px; color: white; background: var(--blue); cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700; padding: 8px 12px; }
+
 /* Pull-to-refresh (phones) */
 .pull-indicator { position: fixed; top: -48px; left: 50%; z-index: 50; display: flex; align-items: center; gap: 8px; padding: 9px 16px; color: var(--blue); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 8px 22px #203a6420; font-size: 12px; font-weight: 700; opacity: 0; pointer-events: none; transform: translate(-50%, 0); transition: transform .25s ease, opacity .2s ease; }
 .pull-visible { opacity: 1; }

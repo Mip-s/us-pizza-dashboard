@@ -300,9 +300,49 @@ function Dashboard({ session, profile, onLogout }) {
     }
   }, []);
 
+  // New-version check: an open page (especially the installed phone app, which is
+  // rarely closed) keeps running the old code after a deploy. Compare the script this
+  // page loaded with the latest build's asset-manifest.json.
+  const [updateReady, setUpdateReady] = useState(false);
+  const checkForUpdate = useCallback(async () => {
+    if (process.env.NODE_ENV !== 'production') return false;
+    try {
+      const current = document.querySelector('script[src*="/static/js/main."]')?.getAttribute('src');
+      if (!current) return false;
+      const res = await fetch('/asset-manifest.json', { cache: 'no-store' });
+      if (!res.ok) return false;
+      const latest = (await res.json())?.files?.['main.js'];
+      const isNew = Boolean(latest && latest !== current);
+      if (isNew) setUpdateReady(true);
+      return isNew;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    checkForUpdate();
+    const timer = setInterval(checkForUpdate, 2 * 60 * 1000);
+    // Coming back to the app (e.g. reopening it from the phone's app switcher):
+    // if a new version is out, load it straight away - nobody is mid-task.
+    const onVisible = async () => {
+      if (document.visibilityState === 'visible' && (await checkForUpdate())) window.location.reload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [checkForUpdate]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
+      // Pull-to-refresh / Refresh button also picks up a new dashboard version
+      if (await checkForUpdate()) {
+        window.location.reload();
+        return;
+      }
       await fetchStatus();
     } finally {
       setRefreshing(false);
@@ -528,6 +568,12 @@ function Dashboard({ session, profile, onLogout }) {
         </header>
         {pushError && <div className="push-error">{pushError}</div>}
         {statusError && <div className="push-error">{statusError}</div>}
+        {updateReady && (
+          <div className="update-banner">
+            <span>A new version of the dashboard is available.</span>
+            <button type="button" onClick={() => window.location.reload()}>Update now</button>
+          </div>
+        )}
 
         <div className="section-heading">
           <div><span className="section-kicker">Network overview</span><h2>Today's health snapshot</h2></div>
