@@ -9,6 +9,12 @@ const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY;
 const VAPID_PUBLIC_KEY = process.env.REACT_APP_VAPID_PUBLIC_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// The app lives under /uptime (package.json "homepage"). Served both inside the Operations
+// hub (us-pizza-operations…/uptime) and on its own Worker URL; API + files use this base.
+const BASE = process.env.PUBLIC_URL || '';
+// Inside the hub the URL path starts with /uptime -> show a way back to the hub home.
+const IN_HUB = window.location.pathname.startsWith('/uptime');
+
 // Converts a base64url VAPID key into the Uint8Array format the Push API expects.
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -158,6 +164,8 @@ function Dashboard({ session, profile, onLogout }) {
     setPushSupported(supported);
     if (!supported) return;
 
+    // Root service worker on purpose: inside the hub it's the hub's single worker (one alert
+    // subscription for the whole hub); on the old uptime URL it's this app's own /sw.js.
     navigator.serviceWorker.register('/sw.js').then(async (registration) => {
       const existing = await registration.pushManager.getSubscription();
       // A subscription made with a different (old) VAPID key can't receive alerts:
@@ -255,7 +263,7 @@ function Dashboard({ session, profile, onLogout }) {
       const { data: { session: current } } = await supabase.auth.getSession();
       if (!current) return;
       const since = lastAlertIdRef.current;
-      const res = await fetch(`/api/status${since ? `?since=${since}` : ''}`, {
+      const res = await fetch(`${BASE}/api/status${since ? `?since=${since}` : ''}`, {
         headers: { Authorization: `Bearer ${current.access_token}` },
         cache: 'no-store',
       });
@@ -309,7 +317,7 @@ function Dashboard({ session, profile, onLogout }) {
     try {
       const current = document.querySelector('script[src*="/static/js/main."]')?.getAttribute('src');
       if (!current) return false;
-      const res = await fetch('/asset-manifest.json', { cache: 'no-store' });
+      const res = await fetch(`${BASE}/asset-manifest.json`, { cache: 'no-store' });
       if (!res.ok) return false;
       const latest = (await res.json())?.files?.['main.js'];
       const isNew = Boolean(latest && latest !== current);
@@ -520,6 +528,7 @@ function Dashboard({ session, profile, onLogout }) {
           <div className="header-brand">
             <img src={logo} alt="US Pizza" className="header-logo" />
             <div>
+              {IN_HUB && <a className="hub-back" href="/">← Operations Hub</a>}
               <div className="eyebrow"><span className="live-dot" /> Live operations</div>
               <h1>US Pizza <span>Operations</span></h1>
               <p>Real-time visibility across every outlet in your network.</p>

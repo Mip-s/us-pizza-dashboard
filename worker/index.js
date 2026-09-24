@@ -38,7 +38,15 @@ async function tick(env) {
 
 export default {
   async fetch(request, env, ctx) {
-    const { pathname } = new URL(request.url);
+    // The app is built under /uptime and the Operations hub forwards /uptime/* here.
+    // Strip the prefix so /uptime/api/status -> /api/status, /uptime/static/.. -> /static/..
+    // (/api/heartbeat without prefix keeps working for Telegraf / Automate.)
+    const url = new URL(request.url);
+    if (url.pathname === '/uptime' || url.pathname.startsWith('/uptime/')) {
+      url.pathname = url.pathname.slice('/uptime'.length) || '/';
+      request = new Request(url, request);
+    }
+    const { pathname } = url;
     try {
       if (pathname === '/api/heartbeat') return await handleHeartbeat(request, env);
       if (pathname === '/api/status') return await handleStatus(request, env);

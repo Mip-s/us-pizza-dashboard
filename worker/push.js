@@ -48,7 +48,7 @@ export async function sendAlertPush(env, { outlet, overall, message, title }) {
     title: title || `${outlet.name}: ${String(overall).replace('_', ' ')}`, // e.g. "🚨 POS DOWN · US Pizza Kota Damansara"
     body: message,
     tag: `outlet-${outlet.outlet_id}`,
-    url: '/',
+    url: '/uptime', // hub: opens the uptime page; old URL: /uptime is stripped to /
   });
 
   let sent = 0;

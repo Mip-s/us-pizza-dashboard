@@ -170,3 +170,7 @@ html, body { overscroll-behavior-y: contain; }
 .login-button:hover:not(:disabled) { background: var(--accent-dark); }
 .login-button:disabled { opacity: .6; cursor: default; }
 .login-error { color: #bd3446; background: #fff0f1; border: 1px solid #f3c6cc; border-radius: 10px; font-size: 13px; margin-bottom: 4px; padding: 10px 12px; }
+
+/* Link back to the Operations hub (only shown when opened inside the hub) */
+.hub-back { display: inline-block; color: var(--blue); font-size: 12px; font-weight: 800; text-decoration: none; margin-bottom: 10px; }
+.hub-back:hover { text-decoration: underline; }

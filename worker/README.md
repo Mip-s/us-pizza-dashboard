@@ -1,5 +1,11 @@
 # POS Uptime Monitor (inside the dashboard Worker)
 
+**Served two ways:** inside the Operations hub at `us-pizza-operations…/uptime` (the hub Worker
+forwards `/uptime/*` here through a service binding, so login and alerts are shared with the hub),
+and still directly on this Worker's own URL. The app is built under `/uptime` (`homepage` in
+`package.json`); `worker/index.js` strips the `/uptime` prefix. **`/api/heartbeat` on this Worker's
+own URL must keep working** — every POS agent (Telegraf / Automate) posts there.
+
 One Cloudflare Worker (`uptime-us-pizza-dashboard`, config in `/wrangler.jsonc`) does everything:
 
 ```

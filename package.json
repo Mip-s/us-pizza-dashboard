@@ -2,6 +2,7 @@
   "name": "us-pizza-dashboard",
   "version": "0.1.0",
   "private": true,
+  "homepage": "/uptime",
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
     "@testing-library/dom": "^10.4.2",
