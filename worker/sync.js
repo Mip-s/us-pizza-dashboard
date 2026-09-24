@@ -1,7 +1,11 @@
 // Mirrors Supabase reference data into D1 (Supabase stays the source of truth):
 // outlets + opening hours, station list, heartbeat token hashes.
+//
+// D1 free plan = 100k row writes/day. Rewriting ~500 rows (+ indexes) every 5 minutes used all of
+// it, so we only rewrite when the Supabase data actually CHANGED (compared by a hash). A normal
+// sync now costs one tiny write (the last_sync time).
 
-import { CONFIG } from './core.js';
+import { CONFIG, sha256Hex } from './core.js';
 
 async function supabase(env, path) {
   const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
@@ -21,10 +25,21 @@ export async function syncMetadata(env, now = Date.now(), force = false) {
   if (!force && last && now - Number(last.value) < CONFIG.SYNC_EVERY_MIN * 60 * 1000) return false;
 
   const [outlets, stations, tokens] = await Promise.all([
-    supabase(env, 'outlets?select=outlet_id,code,name,country,operating_hours,opening_time,closing_time'),
-    supabase(env, 'outlet_stations?select=outlet_id,channel,station'),
-    supabase(env, 'heartbeat_tokens?select=outlet_id,token_hash'),
+    supabase(env, 'outlets?select=outlet_id,code,name,country,operating_hours,opening_time,closing_time&order=outlet_id'),
+    supabase(env, 'outlet_stations?select=outlet_id,channel,station&order=outlet_id,channel,station'),
+    supabase(env, 'heartbeat_tokens?select=outlet_id,token_hash&order=token_hash'),
   ]);
+
+  // Nothing changed in Supabase? Just note the sync time.
+  const hash = await sha256Hex(JSON.stringify([outlets, stations, tokens]));
+  const prev = await db.prepare("SELECT value FROM meta WHERE key = 'sync_hash'").first();
+  const stamp = db
+    .prepare("INSERT INTO meta (key, value) VALUES ('last_sync', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
+    .bind(String(now));
+  if (!force && prev?.value === hash) {
+    await stamp.run();
+    return false;
+  }
 
   const stmts = [db.prepare('DELETE FROM outlets'), db.prepare('DELETE FROM stations'), db.prepare('DELETE FROM tokens')];
   for (const o of outlets) {
@@ -56,8 +71,9 @@ export async function syncMetadata(env, now = Date.now(), force = false) {
            AND s.channel = station_state.channel AND s.station = station_state.station)`
     )
   );
+  stmts.push(stamp);
   stmts.push(
-    db.prepare("INSERT INTO meta (key, value) VALUES ('last_sync', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").bind(String(now))
+    db.prepare("INSERT INTO meta (key, value) VALUES ('sync_hash', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value").bind(hash)
   );
   await db.batch(stmts);
   return true;

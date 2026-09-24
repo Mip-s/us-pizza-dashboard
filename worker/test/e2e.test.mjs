@@ -228,3 +228,35 @@ test('push title puts the down systems first', async () => {
     '🚨 POS DOWN · US Pizza Kota Damansara'
   );
 });
+
+test('sync rewrites D1 only when Supabase data changed (D1 free-tier write limit)', async () => {
+  const { syncMetadata } = await import('../sync.js');
+  await reset();
+  await db.prepare("DELETE FROM meta").run();
+  let data = {
+    outlets: [{ outlet_id: 'o-004', code: '004', name: 'US Pizza SS15', country: 'MY', operating_hours: null, opening_time: '10:30:00', closing_time: '22:00:00' }],
+    outlet_stations: [{ outlet_id: 'o-004', channel: 'pos', station: 'POS-1' }],
+    heartbeat_tokens: [{ outlet_id: 'o-004', token_hash: 'h1' }],
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const table = new URL(url).pathname.split('/').pop();
+    return new Response(JSON.stringify(data[table]), { headers: { 'Content-Type': 'application/json' } });
+  };
+  const env2 = { ...env, SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'k' };
+  try {
+    const t0 = Date.now();
+    assert.equal(await syncMetadata(env2, t0), true); // first sync writes
+    // sentinel row: survives only if the next sync does NOT rewrite the tables
+    await db.prepare("INSERT INTO stations VALUES ('o-004','kds','SENTINEL')").run();
+    assert.equal(await syncMetadata(env2, t0 + 6 * MIN), false); // unchanged -> no rewrite
+    assert.equal((await db.prepare("SELECT count(*) n FROM stations WHERE station='SENTINEL'").first()).n, 1);
+    assert.equal(Number((await db.prepare("SELECT value FROM meta WHERE key='last_sync'").first()).value), t0 + 6 * MIN);
+    data = { ...data, outlet_stations: [...data.outlet_stations, { outlet_id: 'o-004', channel: 'kds', station: 'KDS-1' }] };
+    assert.equal(await syncMetadata(env2, t0 + 12 * MIN), true); // changed -> rewrite
+    assert.equal((await db.prepare("SELECT count(*) n FROM stations WHERE station='SENTINEL'").first()).n, 0);
+    assert.equal((await db.prepare("SELECT count(*) n FROM stations WHERE outlet_id='o-004'").first()).n, 2);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
