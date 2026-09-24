@@ -101,6 +101,27 @@ test('closed outlet: no transitions', async () => {
   assert.equal((await states())['pos/POS-1'], 'unknown');
 });
 
+test('closed outlet: an old outage still recovers, but no new one starts', async () => {
+  await reset();
+  // Outage confirmed while open
+  await send(tg({ running: 0 }));
+  const t0 = Date.now(); await runMonitor(db, t0); await runMonitor(db, t0 + 2*MIN);
+  assert.equal((await states())['pos/POS-1'], 'confirmed');
+  // Outlet closes; POS app comes back -> recovers, downtime closed, RESOLVED alert
+  await db.prepare(`UPDATE outlets SET operating_hours = ? WHERE outlet_id='o-004'`)
+    .bind(JSON.stringify(Object.fromEntries(['mon','tue','wed','thu','fri','sat','sun'].map(d => [d, [['03:00','03:01']]])))).run();
+  await send(tg({ running: 1 }));
+  const alerts = await runMonitor(db, Date.now());
+  assert.equal((await states())['pos/POS-1'], 'normal');
+  assert.equal(alerts.length, 1); assert.equal(alerts[0].overall, 'HEALTHY');
+  const open = await db.prepare('SELECT count(*) n FROM downtime_log WHERE ended_at IS NULL').first();
+  assert.equal(open.n, 0);
+  // Still closed; app closes again -> nothing new
+  await send(tg({ running: 0 }));
+  const t1 = Date.now(); await runMonitor(db, t1); await runMonitor(db, t1 + 5*MIN);
+  assert.equal((await states())['pos/POS-1'], 'normal');
+});
+
 test('opening hours: overnight, split shift, SG', () => {
   const o = { operating_hours: JSON.stringify({ mon:[['10:30','02:00']], tue:[['10:30','02:00']], wed:[['10:30','02:00']], thu:[['10:30','02:00']], fri:[['10:30','12:30'],['14:30','23:30']], sat:[['10:30','02:00']], sun:[['10:30','02:00']] }) };
   const at = (iso) => Date.parse(iso);

@@ -278,7 +278,9 @@ export async function runMonitor(db, now = Date.now()) {
   const timeout = CONFIG.HEARTBEAT_TIMEOUT_MIN * MIN;
 
   for (const { outlet, stations } of byOutlet.values()) {
-    if (!isOutletOpen(outlet, now)) continue; // closed: no transitions, no alerts
+    // Closed outlet: no NEW problems (no suspected/confirmed, no down alerts),
+    // but a station that is healthy again may still recover (clears old outages).
+    const open = isOutletOpen(outlet, now);
 
     for (const s of stations) {
       if (!s.last_seen_at) continue; // never reported -> not monitored ('unknown')
@@ -310,6 +312,8 @@ export async function runMonitor(db, now = Date.now()) {
           set({ status: 'normal', suspected_since: null, downtime_id: null });
           s.status = 'normal';
         }
+      } else if (!open) {
+        continue; // closed: not healthy, but don't raise or escalate anything
       } else if (s.status === 'normal' || s.status === 'unknown') {
         set({ status: 'suspected', suspected_since: now });
         s.status = 'suspected';
