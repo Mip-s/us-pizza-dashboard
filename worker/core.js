@@ -122,17 +122,44 @@ export function downSystems(stations) {
   return parts;
 }
 
-export function pushTitle(outletName, overall, stations, now = Date.now()) {
+// Systems that came back in this monitoring pass (recovered = Set of "channel|station").
+// Named like downSystems: the whole category if all of it recovered, else the stations.
+export function recoveredSystems(stations, recovered) {
+  if (!recovered || recovered.size === 0) return [];
+  const parts = [];
+  for (const chan of CHANNELS) {
+    const monitored = stations.filter((s) => s.channel === chan && s.status !== 'unknown');
+    const back = monitored.filter((s) => recovered.has(`${s.channel}|${s.station}`));
+    if (back.length === 0) continue;
+    if (back.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
+    else parts.push(...back.map((s) => STATION_LABEL[s.station] || s.station).sort());
+  }
+  return parts;
+}
+
+// Devices that run their own agent (POS / KDS / SOK) — as opposed to a pinged ODS
+const AGENT_CHANNELS = new Set(['pos', 'kds', 'kiosk']);
+
+export function pushTitle(outletName, overall, stations, now = Date.now(), recovered = null) {
   const name = outletName || 'Unknown Outlet';
   if (overall === 'HEALTHY') return `✅ BACK ONLINE · ${name}`;
 
-  // Outlet went silent: the POS (which also checks every other device) stopped
-  // reporting at all -> likely power / internet loss, nothing at the outlet is visible.
-  const pos = stations.filter((s) => s.channel === 'pos' && s.status !== 'unknown');
-  const silent = pos.length > 0 && pos.every(
+  // Outlet went silent: every device with an agent stopped reporting at all
+  // -> likely power / internet loss, nothing at the outlet is visible.
+  const agents = stations.filter((s) => AGENT_CHANNELS.has(s.channel) && s.status !== 'unknown');
+  const silent = agents.length > 0 && agents.some((s) => s.channel === 'pos') && agents.every(
     (s) => s.status === 'confirmed' && s.last_seen_at && now - s.last_seen_at > CONFIG.HEARTBEAT_TIMEOUT_MIN * MIN
   );
   if (silent) return `🚨 ALL SYSTEMS DOWN (NO SIGNAL) · ${name}`;
+
+  // Something came back but the outlet is not fully healthy yet:
+  //   ✅ POS BACK UP · ⚠️ KDS-1 STILL DOWN · US Pizza Kota Damansara
+  const back = recoveredSystems(stations, recovered);
+  if (back.length) {
+    const still = downSystems(stations);
+    const icon = overall === 'CRITICAL_DOWN' ? '🚨' : '⚠️';
+    return `✅ ${back.join(' · ')} BACK UP · ${icon} ${still.length ? `${still.join(' · ')} STILL DOWN` : String(overall).replace('_', ' ')} · ${name}`;
+  }
 
   // Every monitored category is completely down
   const monitoredChans = [...new Set(stations.filter((s) => s.status !== 'unknown').map((s) => s.channel))];
@@ -160,8 +187,10 @@ export function evaluateOverall(stations) {
 // ---------------------------------------------------------------------------
 // Alert text (port of public.compose_outlet_alert)
 // ---------------------------------------------------------------------------
-export function composeAlert(outletName, overall, stations) {
+export function composeAlert(outletName, overall, stations, recovered = null) {
   const name = outletName || 'Unknown Outlet';
+  const back = recoveredSystems(stations, recovered);
+  const backText = back.length && overall !== 'HEALTHY' ? `✅ ${back.join(', ')} back online. ` : '';
   const byChan = groupByChannel(stations);
   const fully = [];
   const partially = [];
@@ -179,13 +208,13 @@ export function composeAlert(outletName, overall, stations) {
   }
   switch (overall) {
     case 'CRITICAL_DOWN':
-      return posFullyDown
+      return backText + (posFullyDown
         ? `🚨 CRITICAL OUTAGE: ${name} cannot take any orders -- POS is completely down (${fully.join(', ')}). Dispatch immediately to restore service.`
-        : `🚨 CRITICAL OUTAGE: ${name} has multiple channels completely down: ${fully.join(', ')}. Dispatch immediately to restore service.`;
+        : `🚨 CRITICAL OUTAGE: ${name} has multiple channels completely down: ${fully.join(', ')}. Dispatch immediately to restore service.`);
     case 'DEGRADED':
-      return `⚠️ DEGRADED SERVICE: ${name} is operating at reduced capacity.` +
-        (fully.length ? ` Fully down: ${fully.join(', ')}.` : '') +
-        (partially.length ? ` Partially down: ${partially.join(', ')}.` : '');
+      return backText + `⚠️ DEGRADED SERVICE: ${name} is operating at reduced capacity.` +
+        (fully.length ? ` ${back.length ? 'Still fully down' : 'Fully down'}: ${fully.join(', ')}.` : '') +
+        (partially.length ? ` ${back.length ? 'Still partially down' : 'Partially down'}: ${partially.join(', ')}.` : '');
     case 'HEALTHY':
       return `✅ RESOLVED: ${name} has recovered to normal operations. All channels online.`;
     default:
@@ -291,6 +320,7 @@ export async function runMonitor(db, now = Date.now()) {
 
   const stmts = [];
   const changedOutlets = new Set();
+  const recoveredBy = new Map(); // outlet_id -> Set("channel|station") that came back this pass
   const timeout = CONFIG.HEARTBEAT_TIMEOUT_MIN * MIN;
 
   for (const { outlet, stations } of byOutlet.values()) {
@@ -320,6 +350,8 @@ export async function runMonitor(db, now = Date.now()) {
 
       if (healthy) {
         if (s.status === 'confirmed') {
+          if (!recoveredBy.has(outlet.outlet_id)) recoveredBy.set(outlet.outlet_id, new Set());
+          recoveredBy.get(outlet.outlet_id).add(`${s.channel}|${s.station}`);
           if (s.downtime_id) {
             stmts.push(db.prepare('UPDATE downtime_log SET ended_at = ? WHERE id = ?').bind(now, s.downtime_id));
           }
@@ -357,7 +389,8 @@ export async function runMonitor(db, now = Date.now()) {
   for (const outletId of changedOutlets) {
     const { outlet, stations } = byOutlet.get(outletId);
     const overall = evaluateOverall(stations);
-    const message = composeAlert(outlet.name, overall, stations);
+    const recovered = recoveredBy.get(outletId);
+    const message = composeAlert(outlet.name, overall, stations, recovered);
     const prev = await db.prepare('SELECT alert_message FROM outlet_state WHERE outlet_id = ?').bind(outletId).first();
     if (prev?.alert_message === message) continue;
     await db.batch([
@@ -373,7 +406,7 @@ export async function runMonitor(db, now = Date.now()) {
         .bind(outletId, overall, message, now),
     ]);
     const alert = await db.prepare('SELECT id FROM alerts WHERE outlet_id = ? ORDER BY id DESC LIMIT 1').bind(outletId).first();
-    alerts.push({ id: alert.id, outlet, overall, message, title: pushTitle(outlet.name, overall, stations, now) });
+    alerts.push({ id: alert.id, outlet, overall, message, title: pushTitle(outlet.name, overall, stations, now, recovered) });
   }
   return alerts;
 }

@@ -154,6 +154,22 @@ test('pinged ODS: unreachable while POS is up -> DEGRADED', async () => {
   assert.equal((await states())['ods/ODS-1'], 'confirmed');
 });
 
+test('POS back but KDS still down -> alert says POS is back, KDS still down', async () => {
+  await resetAgents();
+  await send(posWithOds()); await send(selfAgent('kds', 'KDS-1')); await runMonitor(db, Date.now());
+  await send({ metrics: [{ name: 'procstat_lookup', tags: { pos_station: 'POS-1' }, fields: { running: 0 }, timestamp: Math.floor(Date.now()/1000) }] });
+  await send(selfAgent('kds', 'KDS-1', 0));
+  const t0 = Date.now(); await runMonitor(db, t0);
+  const down = await runMonitor(db, t0 + 1.1*MIN);
+  assert.equal(down[0].overall, 'CRITICAL_DOWN');
+  await send(posWithOds());                                  // POS back, KDS still closed
+  const back = await runMonitor(db, Date.now() + 1.2*MIN);
+  assert.equal(back[0].overall, 'DEGRADED');
+  assert.equal(back[0].title, '✅ POS BACK UP · ⚠️ KDS STILL DOWN · US Pizza SS15'); // KDS-2 never reported, so KDS-1 = all of KDS
+  assert.match(back[0].message, /^✅ POS back online\. ⚠️ DEGRADED SERVICE/);
+  assert.match(back[0].message, /Still fully down: KDS \(1\/1\)/);
+});
+
 test('closed outlet: no transitions', async () => {
   await reset();
   await db.prepare(`UPDATE outlets SET operating_hours = ? WHERE outlet_id='o-004'`)
@@ -274,12 +290,28 @@ test('push title puts the down systems first', async () => {
     '🚨 ALL SYSTEMS DOWN · US Pizza Kota Damansara'
   );
   const now = Date.now();
+  // every device with an agent silent -> no signal from the outlet
   assert.equal(
     pushTitle(name, 'CRITICAL_DOWN', [
       { channel: 'pos', station: 'POS-1', status: 'confirmed', last_seen_at: now - 15 * MIN },
-      st('kds', 'KDS-1', 'normal'),
+      { channel: 'kds', station: 'KDS-1', status: 'confirmed', last_seen_at: now - 15 * MIN },
+      st('ods', 'ODS-1', 'normal'),
     ], now),
     '🚨 ALL SYSTEMS DOWN (NO SIGNAL) · US Pizza Kota Damansara'
+  );
+  // POS silent but the KDS agent still reports -> only the POS is down
+  assert.equal(
+    pushTitle(name, 'CRITICAL_DOWN', [
+      { channel: 'pos', station: 'POS-1', status: 'confirmed', last_seen_at: now - 15 * MIN },
+      { channel: 'kds', station: 'KDS-1', status: 'normal', last_seen_at: now - 1 * MIN },
+    ], now),
+    '🚨 POS DOWN · US Pizza Kota Damansara'
+  );
+  // POS came back, KDS still down
+  assert.equal(
+    pushTitle(name, 'DEGRADED', [st('pos', 'POS-1', 'normal'), st('kds', 'KDS-1', 'confirmed'), st('kds', 'KDS-2', 'normal')],
+      now, new Set(['pos|POS-1'])),
+    '✅ POS BACK UP · ⚠️ KDS-1 STILL DOWN · US Pizza Kota Damansara'
   );
   // POS app closed but the PC is still reporting -> just POS
   assert.equal(
