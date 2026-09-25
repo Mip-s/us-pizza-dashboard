@@ -197,12 +197,15 @@ export function composeAlert(outletName, overall, stations) {
 // Heartbeat parsing (Telegraf JSON output, batch or single metric)
 //
 // Expected Telegraf tags:
-//   global:  outlet_code, pos_station (e.g. "POS-1")
-//   ping:    peer_channel ("kds" | "kiosk" | "ods"), peer_station ("KDS-1")
+//   global:  channel ("pos" | "kds" | "kiosk", default "pos") + station ("KDS-1"),
+//            or the older pos_station ("POS-1") for a POS agent.
+//            Every POS / KDS / SOK runs its own agent and reports ITSELF with these tags.
+//   ping:    peer_channel ("ods") + peer_station ("ODS-1") — only for devices that can't run
+//            an agent (the ODS TV), pinged by the POS it is connected to.
 // Metrics used:
 //   procstat_lookup.running  -> POS app running (>0)
 //   ping.result_code / percent_packet_loss -> peer device reachable
-//   anything else            -> just proves the POS is alive
+//   anything else            -> just proves the reporting device is alive
 // Returns a Map key "channel|station" -> { channel, station, ok|null, ts, detail }
 // ---------------------------------------------------------------------------
 export function parseTelegraf(body) {
@@ -232,20 +235,23 @@ export function parseTelegraf(body) {
     // Telegraf json timestamps default to seconds
     const tsRaw = Number(m.timestamp) || 0;
     const ts = tsRaw > 1e12 ? tsRaw : tsRaw * 1000;
-    const posStation = tags.pos_station || 'POS-1';
+    // The device that sent this metric (its own agent)
+    const selfChannel = tags.channel || 'pos';
+    const selfStation = tags.station || tags.pos_station || 'POS-1';
 
     if (m.name === 'procstat_lookup') {
-      put('pos', posStation, Number(fields.running) > 0 ? 1 : 0, ts, { running: fields.running, host: tags.host });
+      put(selfChannel, selfStation, Number(fields.running) > 0 ? 1 : 0, ts, { running: fields.running, host: tags.host });
     } else if (m.name === 'ping' && tags.peer_channel && tags.peer_station) {
       const ok = Number(fields.result_code) === 0 && Number(fields.percent_packet_loss ?? 100) < 100;
       put(tags.peer_channel, tags.peer_station, ok ? 1 : 0, ts, {
+        via: 'ping',
         url: tags.url,
         result_code: fields.result_code,
         loss: fields.percent_packet_loss,
       });
-      put('pos', posStation, null, ts, { host: tags.host }); // POS reported, so it is alive
+      put(selfChannel, selfStation, null, ts, { host: tags.host }); // the pinging device is alive
     } else {
-      put('pos', posStation, null, ts, { host: tags.host, metric: m.name });
+      put(selfChannel, selfStation, null, ts, { host: tags.host, metric: m.name });
     }
   }
   return out;
@@ -255,13 +261,23 @@ export function parseTelegraf(body) {
 // One monitoring pass (run by the cron Worker every minute)
 // Returns list of { outlet, overall, message } for outlets whose alert changed.
 // ---------------------------------------------------------------------------
+// A station whose status comes from another device's ping (not its own agent)
+function isPinged(s) {
+  try {
+    const d = JSON.parse(s.detail || '{}');
+    return d.via === 'ping' || 'url' in d;
+  } catch {
+    return false;
+  }
+}
+
 export async function runMonitor(db, now = Date.now()) {
   const outlets = (await db.prepare('SELECT * FROM outlets').all()).results;
   const rows = (
     await db
       .prepare(
         `SELECT s.outlet_id, s.channel, s.station,
-                st.reported_ok, st.last_seen_at, st.last_ok_at,
+                st.reported_ok, st.last_seen_at, st.last_ok_at, st.detail,
                 COALESCE(st.status, 'unknown') AS status, st.suspected_since, st.downtime_id
            FROM stations s
            LEFT JOIN station_state st
@@ -286,8 +302,9 @@ export async function runMonitor(db, now = Date.now()) {
       if (!s.last_seen_at) continue; // never reported -> not monitored ('unknown')
 
       const fresh = now - s.last_seen_at <= timeout;
-      // Peer devices (KDS/kiosk) are only judged while the POS is still reporting them.
-      if (!fresh && s.channel !== 'pos') continue;
+      // Pinged devices (ODS) are only judged while the device pinging them still reports;
+      // devices with their own agent (POS / KDS / SOK) go down when they fall silent.
+      if (!fresh && isPinged(s)) continue;
       const healthy = fresh && s.reported_ok !== 0;
       const set = (fields) => {
         const keys = Object.keys(fields);

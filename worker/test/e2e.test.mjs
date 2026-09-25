@@ -92,6 +92,68 @@ test('POS goes silent -> only after heartbeat timeout; KDS not double-counted', 
   assert.equal(s['pos/POS-1'], 'confirmed'); assert.equal(s['kds/KDS-1'], 'normal');
 });
 
+// ---- every POS / KDS / SOK runs its own agent; only the ODS is pinged by the POS ----
+const selfAgent = (channel, station, running = 1) => ({ metrics: [
+  { name: 'alive', tags: { channel, station }, fields: { up: 1 }, timestamp: Math.floor(Date.now()/1000) },
+  { name: 'procstat_lookup', tags: { channel, station }, fields: { running }, timestamp: Math.floor(Date.now()/1000) },
+]});
+const posWithOds = (odsUp = true) => ({ metrics: [
+  { name: 'procstat_lookup', tags: { pos_station: 'POS-1' }, fields: { running: 1 }, timestamp: Math.floor(Date.now()/1000) },
+  { name: 'ping', tags: { pos_station: 'POS-1', peer_channel: 'ods', peer_station: 'ODS-1', url: '192.168.0.50' }, fields: { result_code: odsUp ? 0 : 2, percent_packet_loss: odsUp ? 0 : 100 }, timestamp: Math.floor(Date.now()/1000) },
+]});
+async function resetAgents() {
+  await reset();
+  await db.prepare('INSERT INTO stations VALUES (?,?,?)').bind('o-004', 'ods', 'ODS-1').run();
+}
+
+test('own agent: KDS reports itself (not as the POS)', async () => {
+  await resetAgents();
+  const r = await send(selfAgent('kds', 'KDS-1'));
+  assert.equal(r.body.accepted, 1); assert.deepEqual(r.body.ignored, []);
+  await runMonitor(db, Date.now());
+  assert.deepEqual(await states(), { 'kds/KDS-1': 'normal' });
+});
+
+test('own agent: KDS app closed -> DEGRADED', async () => {
+  await resetAgents();
+  await send(posWithOds()); await send(selfAgent('kds', 'KDS-1')); await runMonitor(db, Date.now());
+  await send(selfAgent('kds', 'KDS-1', 0));
+  const t0 = Date.now(); await runMonitor(db, t0);
+  const a = await runMonitor(db, t0 + 1.1*MIN);
+  assert.equal(a[0].overall, 'DEGRADED');
+  assert.equal((await states())['kds/KDS-1'], 'confirmed');
+});
+
+test('own agent: KDS goes silent -> down after heartbeat timeout, POS unaffected', async () => {
+  await resetAgents();
+  await send(posWithOds()); await send(selfAgent('kds', 'KDS-1')); await runMonitor(db, Date.now());
+  await db.prepare("UPDATE station_state SET last_seen_at = last_seen_at - ?, last_ok_at = last_ok_at - ? WHERE channel = 'kds'").bind(12*MIN, 12*MIN).run();
+  await send(posWithOds());                                   // POS + ODS keep reporting
+  const t0 = Date.now(); await runMonitor(db, t0);
+  await runMonitor(db, t0 + 1.1*MIN);
+  const s = await states();
+  assert.equal(s['kds/KDS-1'], 'confirmed'); assert.equal(s['pos/POS-1'], 'normal'); assert.equal(s['ods/ODS-1'], 'normal');
+});
+
+test('pinged ODS: follows the POS — not double-counted when the POS goes silent', async () => {
+  await resetAgents();
+  await send(posWithOds()); await runMonitor(db, Date.now());
+  const t0 = Date.now();
+  await runMonitor(db, t0 + 12*MIN); await runMonitor(db, t0 + 13.2*MIN);
+  const s = await states();
+  assert.equal(s['pos/POS-1'], 'confirmed'); assert.equal(s['ods/ODS-1'], 'normal');
+});
+
+test('pinged ODS: unreachable while POS is up -> DEGRADED', async () => {
+  await resetAgents();
+  await send(posWithOds()); await runMonitor(db, Date.now());
+  await send(posWithOds(false));
+  const t0 = Date.now(); await runMonitor(db, t0);
+  const a = await runMonitor(db, t0 + 1.1*MIN);
+  assert.equal(a[0].overall, 'DEGRADED');
+  assert.equal((await states())['ods/ODS-1'], 'confirmed');
+});
+
 test('closed outlet: no transitions', async () => {
   await reset();
   await db.prepare(`UPDATE outlets SET operating_hours = ? WHERE outlet_id='o-004'`)

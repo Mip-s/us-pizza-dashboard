@@ -1,14 +1,15 @@
 # ===========================================================================
-# US Pizza POS Uptime Monitor — Telegraf agent for one POS terminal
-# Outlet: {{OUTLET_CODE}} {{OUTLET_NAME}}
+# US Pizza POS Uptime Monitor — Telegraf agent for one Windows device (POS / KDS / SOK)
+# Outlet: {{OUTLET_CODE}} {{OUTLET_NAME}} — this device: {{STATION}}
 #
-# Every minute: checks the POS app is running and pings the outlet's KDS/kiosk.
+# Every minute: checks this device's app is running (and, on the POS, pings the ODS TV).
 # Sends only when something CHANGED, plus an "I'm alive" refresh every 5 min.
 # ===========================================================================
 
 [global_tags]
   outlet_code = "{{OUTLET_CODE}}"
-  pos_station = "{{POS_STATION}}"
+  channel = "{{CHANNEL}}"      # pos | kds | kiosk
+  station = "{{STATION}}"      # POS-1 / KDS-1 / SOK-1 — must match the station in Supabase
 
 [agent]
   interval = "1m"
@@ -30,13 +31,13 @@
   fieldinclude = ["total"]
 
 # ---------------------------------------------------------------------------
-# Is the POS app running?  procstat_lookup.running = number of processes (0 = down)
+# Is this device's app running?  procstat_lookup.running = number of processes (0 = down)
 # Fill in the process name from Task Manager → Details (e.g. "PosApp.exe")
 # ---------------------------------------------------------------------------
 {{PROCSTAT_BLOCK}}
 
 # ---------------------------------------------------------------------------
-# Peer devices on the outlet LAN (KDS / kiosk are Android, so the POS checks them)
+# ODS TV connected to this POS (it can't run an agent, so the POS pings it)
 # ---------------------------------------------------------------------------
 {{PING_BLOCKS}}
 

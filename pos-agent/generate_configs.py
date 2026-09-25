@@ -57,13 +57,8 @@ def ping_blocks(devs):
     for dtype, ip in devs:
         if not dtype:
             continue
-        if re.fullmatch(r"KDS\d", dtype):
-            kds_n += 1
-            channel, station = "kds", f"KDS-{kds_n}"
-        elif dtype == "Kiosk":
-            sok_n += 1
-            channel, station = "kiosk", f"SOK-{sok_n}"
-        elif re.fullmatch(r"ODS\s*\d*|Order Display.*", dtype, re.I):
+        # KDS / kiosk run their own agent — only the ODS TV is pinged by the POS
+        if re.fullmatch(r"ODS\s*\d*|Order Display.*", dtype, re.I):
             # ODS = order display screen (TV) — must match an "ods" station in Supabase outlet_stations
             ods_n += 1
             channel, station = "ods", f"ODS-{ods_n}"
@@ -94,7 +89,7 @@ def ping_blocks(devs):
                 f'#     peer_channel = "{channel}"\n'
                 f'#     peer_station = "{station}"'
             )
-    return "\n\n".join(blocks) if blocks else "# No KDS / kiosk / ODS listed for this outlet"
+    return "\n\n".join(blocks) if blocks else "# No ODS listed for this outlet"
 
 
 def procstat_block(process):
@@ -129,7 +124,8 @@ def main():
             conf = (
                 template.replace("{{OUTLET_CODE}}", code)
                 .replace("{{OUTLET_NAME}}", row["outlet_name"])
-                .replace("{{POS_STATION}}", "POS-1")
+                .replace("{{CHANNEL}}", "pos")
+                .replace("{{STATION}}", "POS-1")
                 .replace("{{DASHBOARD_URL}}", args.url.rstrip("/"))
                 .replace("{{TOKEN}}", row["heartbeat_token"])
                 .replace("{{PROCSTAT_BLOCK}}", procstat_block(args.process))
