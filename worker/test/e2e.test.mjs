@@ -248,7 +248,11 @@ test('status API: returns outlets, stations and new alerts since cursor', async 
   await send(tg({ running: 0 }));
   const t0 = Date.now(); await runMonitor(db, t0); await runMonitor(db, t0 + 1.1*MIN); // -> CRITICAL alert
   const realFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify([{ outlet_id: 'o-004', code: '004', name: 'US Pizza SS15', region: 'Klang Valley' }]), { status: 200 });
+  let role = 'outlet_manager';
+  globalThis.fetch = async (url) =>
+    String(url).includes('/profiles')
+      ? new Response(JSON.stringify([{ role }]), { status: 200 })
+      : new Response(JSON.stringify([{ outlet_id: 'o-004', code: '004', name: 'US Pizza SS15', region: 'Klang Valley' }]), { status: 200 });
   try {
     const env2 = { ...env, SUPABASE_URL: 'https://example.supabase.co', SUPABASE_ANON_KEY: 'anon' };
     const call = async (q = '') => (await handleStatus(new Request('https://x/api/status' + q, { headers: { Authorization: 'Bearer user-jwt' } }), env2)).json();
@@ -261,6 +265,11 @@ test('status API: returns outlets, stations and new alerts since cursor', async 
     assert.match(second.alerts[0].message, /🚨/);
     const third = await call(`?since=${first.last_alert_id}`);
     assert.equal(third.alerts.length, 0);
+    // customer service / technicians: no uptime access even by URL
+    for (role of ['customer_service', 'technician']) {
+      const res = await handleStatus(new Request('https://x/api/status', { headers: { Authorization: 'Bearer user-jwt' } }), env2);
+      assert.equal(res.status, 403);
+    }
   } finally {
     globalThis.fetch = realFetch;
   }

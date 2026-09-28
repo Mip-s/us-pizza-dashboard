@@ -26,6 +26,8 @@ const json = (obj, status = 200) =>
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 
+const UPTIME_ROLES = ['operations_team', 'area_manager', 'outlet_manager'];
+
 export async function handleStatus(request, env) {
   const auth = request.headers.get('Authorization') || '';
   if (!auth.startsWith('Bearer ')) return json({ error: 'not signed in' }, 401);
@@ -37,6 +39,16 @@ export async function handleStatus(request, env) {
   if (res.status === 401 || res.status === 403) return json({ error: 'session expired' }, 401);
   if (!res.ok) return json({ error: 'could not load outlets' }, 502);
   const outlets = await res.json();
+
+  // Only operations staff use the uptime monitor (customer service / technicians have no card for it,
+  // and must not reach it by typing the URL either). profiles RLS returns just the caller's own row.
+  const pr = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=role`, {
+    headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: auth },
+  });
+  const [profile] = pr.ok ? await pr.json() : [];
+  if (!UPTIME_ROLES.includes(profile?.role)) {
+    return json({ error: 'Your account does not have access to the POS Uptime Monitor.' }, 403);
+  }
   if (outlets.length === 0) return json({ generated_at: Date.now(), outlets: [], alerts: [], last_alert_id: 0 });
 
   const ids = outlets.map((o) => o.outlet_id);
