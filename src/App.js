@@ -193,7 +193,7 @@ function Dashboard({ session, profile, onLogout }) {
   const [expandedChannels, setExpandedChannels] = useState(() => new Set());
   const [toasts, setToasts] = useState([]);
   const [filterStatus, setFilterStatus] = useState('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || ''); // ?q= from the hub
   const [loading, setLoading] = useState(true);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
