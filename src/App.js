@@ -919,7 +919,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' }); // this device only
   };
 
   if (authLoading) {
