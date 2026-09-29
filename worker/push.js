@@ -3,6 +3,7 @@
 // Subscriptions are stored in Supabase (public.push_subscriptions) by the dashboard.
 
 import { buildPushPayload } from '@block65/webcrypto-web-push';
+import { pickLang } from './push-i18n.js';
 
 async function sb(env, path, init = {}) {
   const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
@@ -33,23 +34,31 @@ async function recipientUserIds(env, outletId) {
 }
 
 // Returns number of notifications delivered.
-export async function sendAlertPush(env, { outlet, overall, message, title }) {
+// texts = { en: { title, body }, ms: …, zh: …, my: … } from core.js; each person gets their hub language.
+export async function sendAlertPush(env, { outlet, overall, message, title, texts }) {
   if (!env.VAPID_PRIVATE_KEY || !env.VAPID_PUBLIC_KEY) return 0;
   const userIds = await recipientUserIds(env, outlet.outlet_id);
   if (userIds.length === 0) return 0;
 
-  const subs = await sb(env, `push_subscriptions?select=endpoint,p256dh,auth&user_id=in.(${userIds.join(',')})`);
+  const [subs, profiles] = await Promise.all([
+    sb(env, `push_subscriptions?select=user_id,endpoint,p256dh,auth&user_id=in.(${userIds.join(',')})`),
+    sb(env, `profiles?select=user_id,preferred_language&user_id=in.(${userIds.join(',')})`),
+  ]);
+  const langOf = new Map(profiles.map((p) => [p.user_id, pickLang(p.preferred_language)]));
   const vapid = {
     subject: env.VAPID_SUBJECT || 'mailto:admin@uspizza.com',
     publicKey: env.VAPID_PUBLIC_KEY,
     privateKey: env.VAPID_PRIVATE_KEY,
   };
-  const data = JSON.stringify({
-    title: title || `${outlet.name}: ${String(overall).replace('_', ' ')}`, // e.g. "🚨 POS DOWN · US Pizza Kota Damansara"
-    body: message,
-    tag: `outlet-${outlet.outlet_id}`,
-    url: '/uptime', // hub: opens the uptime page; old URL: /uptime is stripped to /
-  });
+  const dataFor = (lang) => {
+    const txt = texts?.[lang] || texts?.en || {};
+    return JSON.stringify({
+      title: txt.title || title || `${outlet.name}: ${String(overall).replace('_', ' ')}`, // e.g. "🚨 POS DOWN · US Pizza Kota Damansara"
+      body: txt.body || message,
+      tag: `outlet-${outlet.outlet_id}`,
+      url: '/uptime', // hub: opens the uptime page; old URL: /uptime is stripped to /
+    });
+  };
 
   let sent = 0;
   const stale = [];
@@ -57,7 +66,7 @@ export async function sendAlertPush(env, { outlet, overall, message, title }) {
     subs.map(async (s) => {
       try {
         const payload = await buildPushPayload(
-          { data, options: { ttl: 3600, urgency: overall === 'HEALTHY' ? 'normal' : 'high' } },
+          { data: dataFor(langOf.get(s.user_id) || 'en'), options: { ttl: 3600, urgency: overall === 'HEALTHY' ? 'normal' : 'high' } },
           { endpoint: s.endpoint, expirationTime: null, keys: { p256dh: s.p256dh, auth: s.auth } },
           vapid
         );

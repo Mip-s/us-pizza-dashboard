@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import logo from './logo.jpeg';
 import './App.css';
+import { t, useLang, locale, setLang, getLang, syncLangFromProfile, LANGS, LANGUAGE_NAMES } from './i18n';
 
 // Initialize Supabase
 const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
@@ -40,6 +41,55 @@ const PULL_THRESHOLD = 70;
 // Friendly names for stations that aren't device IDs
 const STATION_LABELS = { grab: 'GrabFood', foodpanda: 'foodpanda', shopee: 'ShopeeFood' };
 
+// Status names as shown (English keys for t())
+const STATUS_LABELS = { CRITICAL_DOWN: 'CRITICAL DOWN', DEGRADED: 'DEGRADED', HEALTHY: 'HEALTHY', UNMONITORED: 'UNMONITORED' };
+const statusLabel = (s) => (STATUS_LABELS[s] ? t(STATUS_LABELS[s]) : String(s || '').replace('_', ' '));
+
+// Alert texts are written in English by worker/core.js (composeAlert); translate them for display.
+function alertText(msg) {
+  if (!msg) return msg;
+  let s = String(msg);
+  let prefix = '';
+  let m = s.match(/^✅ (.+?) back online\. (.*)$/s);
+  if (m) {
+    prefix = `${t('✅ {systems} back online.', { systems: m[1] })} `;
+    s = m[2];
+  }
+  const rules = [
+    [/^🚨 CRITICAL OUTAGE: (.+) cannot take any orders -- POS is completely down \((.+)\)\. Dispatch immediately to restore service\.$/s,
+      (x) => t('🚨 CRITICAL OUTAGE: {name} cannot take any orders — POS is completely down ({systems}). Dispatch immediately to restore service.', { name: x[1], systems: x[2] })],
+    [/^🚨 CRITICAL OUTAGE: (.+) has multiple channels completely down: (.+)\. Dispatch immediately to restore service\.$/s,
+      (x) => t('🚨 CRITICAL OUTAGE: {name} has multiple channels completely down: {systems}. Dispatch immediately to restore service.', { name: x[1], systems: x[2] })],
+    [/^✅ RESOLVED: (.+) has recovered to normal operations\. All channels online\.$/s,
+      (x) => t('✅ RESOLVED: {name} has recovered to normal operations. All channels online.', { name: x[1] })],
+    [/^INFO: (.+) status is (.+)$/s, (x) => t('INFO: {name} status is {status}', { name: x[1], status: statusLabel(x[2]) })],
+  ];
+  for (const [re, fn] of rules) {
+    m = s.match(re);
+    if (m) return prefix + fn(m);
+  }
+  m = s.match(/^⚠️ DEGRADED SERVICE: (.+?) is operating at reduced capacity\.(.*)$/s);
+  if (m) {
+    const rest = m[2].replace(/ (Still fully down|Fully down|Still partially down|Partially down): (.+?)\.(?= |$)/g, (_, what, list) => ` ${t(what)}: ${list}.`);
+    return prefix + t('⚠️ DEGRADED SERVICE: {name} is operating at reduced capacity.', { name: m[1] }) + rest;
+  }
+  return prefix + s;
+}
+
+// Language picker (the same setting as the hub's; saved to the profile so push messages follow it too)
+const LangSelect = ({ onChange }) => (
+  <select className="lang-select" value={getLang()} onChange={(e) => onChange(e.target.value)} aria-label={t('Language')}>
+    {LANGS.map((code) => (
+      <option key={code} value={code} lang={code}>{LANGUAGE_NAMES[code]}</option>
+    ))}
+  </select>
+);
+const saveLanguage = async (lang) => {
+  setLang(lang);
+  const { error } = await supabase.rpc('set_my_language', { p_language: lang });
+  if (error) console.error('Could not save language:', error.message);
+};
+
 // Role display labels
 const ROLE_LABELS = {
   operations_team: 'Operations Team',
@@ -60,14 +110,15 @@ const Login = ({ onLogin, loading, errorMessage }) => {
   return (
     <div className="login-shell">
       <form className="login-card" onSubmit={handleSubmit}>
+        <LangSelect onChange={setLang} />
         <img src={logo} alt="US Pizza" className="login-logo" />
-        <div className="eyebrow"><span className="live-dot" /> Live operations</div>
-        <h1 className="login-title">US Pizza <span>Operations</span></h1>
-        <p className="login-subtitle">Sign in with your admin or manager account.</p>
+        <div className="eyebrow"><span className="live-dot" /> {t('Live operations')}</div>
+        <h1 className="login-title">US Pizza <span>{t('Operations')}</span></h1>
+        <p className="login-subtitle">{t('Sign in with your admin or manager account.')}</p>
 
         {errorMessage && <div className="login-error">{errorMessage}</div>}
 
-        <label className="login-label" htmlFor="email">Email</label>
+        <label className="login-label" htmlFor="email">{t('Email')}</label>
         <input
           id="email"
           type="email"
@@ -78,7 +129,7 @@ const Login = ({ onLogin, loading, errorMessage }) => {
           required
         />
 
-        <label className="login-label" htmlFor="password">Password</label>
+        <label className="login-label" htmlFor="password">{t('Password')}</label>
         <input
           id="password"
           type="password"
@@ -90,7 +141,7 @@ const Login = ({ onLogin, loading, errorMessage }) => {
         />
 
         <button type="submit" className="login-button" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign in'}
+          {loading ? t('Signing in…') : t('Sign in')}
         </button>
       </form>
     </div>
@@ -116,10 +167,10 @@ const Toast = ({ message, type, onClose }) => {
       className={`toast ${tone} animate-slide-in`}
       onClick={onClose}
       role="alert"
-      title="Click to dismiss"
+      title={t('Click to dismiss')}
     >
       <span className="toast-dot" aria-hidden="true" />
-      <span className="toast-text">{message}</span>
+      <span className="toast-text">{alertText(message)}</span>
       <button
         type="button"
         className="toast-close"
@@ -127,7 +178,7 @@ const Toast = ({ message, type, onClose }) => {
           e.stopPropagation();
           onClose();
         }}
-        aria-label="Close notification"
+        aria-label={t('Close notification')}
       >
         ×
       </button>
@@ -186,7 +237,7 @@ function Dashboard({ session, profile, onLogout }) {
 
   const handleEnablePush = async () => {
     if (needsIosInstall) {
-      setPushError('On iPhone, tap Share → "Add to Home Screen" first, then open the app from your Home Screen to enable alerts.');
+      setPushError(t('On iPhone, tap Share → "Add to Home Screen" first, then open the app from your Home Screen to enable alerts.'));
       return;
     }
     setPushBusy(true);
@@ -194,7 +245,7 @@ function Dashboard({ session, profile, onLogout }) {
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        setPushError('Notification permission was not granted.');
+        setPushError(t('Notification permission was not granted.'));
         setPushBusy(false);
         return;
       }
@@ -228,7 +279,7 @@ function Dashboard({ session, profile, onLogout }) {
       setPushSubscribed(true);
     } catch (err) {
       console.error('Failed to enable push notifications:', err);
-      setPushError('Could not enable notifications. Please try again.');
+      setPushError(t('Could not enable notifications. Please try again.'));
     } finally {
       setPushBusy(false);
     }
@@ -247,7 +298,7 @@ function Dashboard({ session, profile, onLogout }) {
       setPushSubscribed(false);
     } catch (err) {
       console.error('Failed to disable push notifications:', err);
-      setPushError('Could not disable notifications. Please try again.');
+      setPushError(t('Could not disable notifications. Please try again.'));
     } finally {
       setPushBusy(false);
     }
@@ -300,8 +351,8 @@ function Dashboard({ session, profile, onLogout }) {
       if (failCountRef.current < 2) return; // ignore a single blip; keep showing the last good data
       setStatusError(
         error instanceof TypeError || /404|Unexpected token/.test(String(error.message))
-          ? 'Live status service is not reachable. (Running locally? Start the Worker with "npx wrangler dev" too.)'
-          : `Could not load live status: ${error.message}`
+          ? t('Live status service is not reachable. (Running locally? Start the Worker with "npx wrangler dev" too.)')
+          : t('Could not load live status: {error}', { error: error.message })
       );
     } finally {
       setLoading(false);
@@ -519,7 +570,7 @@ function Dashboard({ session, profile, onLogout }) {
           {refreshing ? '' : '↓'}
         </span>
         <span className="pull-text">
-          {refreshing ? 'Refreshing…' : pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh'}
+          {refreshing ? t('Refreshing…') : pullDistance >= PULL_THRESHOLD ? t('Release to refresh') : t('Pull to refresh')}
         </span>
       </div>
       <div className="dashboard-container">
@@ -528,25 +579,25 @@ function Dashboard({ session, profile, onLogout }) {
           <div className="header-brand">
             <img src={logo} alt="US Pizza" className="header-logo" />
             <div>
-              {IN_HUB && <a className="hub-back" href="/">← Operations Hub</a>}
-              <div className="eyebrow"><span className="live-dot" /> Live operations</div>
-              <h1>US Pizza <span>Operations</span></h1>
-              <p>Real-time visibility across every outlet in your network.</p>
+              {IN_HUB && <a className="hub-back" href="/">{t('← Operations Hub')}</a>}
+              <div className="eyebrow"><span className="live-dot" /> {t('Live operations')}</div>
+              <h1>US Pizza <span>{t('Operations')}</span></h1>
+              <p>{t('Real-time visibility across every outlet in your network.')}</p>
             </div>
           </div>
           <div className="header-badge">
             <span className="header-badge-icon">◒</span>
-            <div><strong>Monitoring active</strong><small>Updates automatically</small></div>
+            <div><strong>{t('Monitoring active')}</strong><small>{t('Updates automatically')}</small></div>
           </div>
           <button
             type="button"
             className="refresh-button"
             onClick={handleRefresh}
             disabled={refreshing}
-            title="Refresh outlet and channel status now"
+            title={t('Refresh outlet and channel status now')}
           >
             <span className={`refresh-icon ${refreshing ? 'spinning' : ''}`}>⟳</span>
-            {refreshing ? 'Refreshing...' : 'Refresh'}
+            {refreshing ? t('Refreshing…') : t('Refresh')}
           </button>
           {(pushSupported || needsIosInstall) && (
             <button
@@ -554,40 +605,41 @@ function Dashboard({ session, profile, onLogout }) {
               className={`push-toggle ${pushSubscribed ? 'push-on' : ''}`}
               onClick={pushSubscribed ? handleDisablePush : handleEnablePush}
               disabled={pushBusy}
-              title={needsIosInstall ? 'Add to Home Screen first (iOS requirement)' : (pushError || undefined)}
+              title={needsIosInstall ? t('Add to Home Screen first (iOS requirement)') : (pushError || undefined)}
             >
               <span className="push-dot" />
               {pushBusy
-                ? 'Working...'
+                ? t('Working…')
                 : pushSubscribed
-                ? 'Alerts on'
+                ? t('Alerts on')
                 : needsIosInstall
-                ? 'Enable alerts (install first)'
-                : 'Enable alerts'}
+                ? t('Enable alerts (install first)')
+                : t('Enable alerts')}
             </button>
           )}
           <div className="user-badge">
             <div className="user-avatar">{(profile?.full_name || session?.user?.email || '?').charAt(0).toUpperCase()}</div>
             <div>
               <strong>{profile?.full_name || session?.user?.email}</strong>
-              <small>{ROLE_LABELS[profile?.role] || 'Signed in'}</small>
+              <small>{ROLE_LABELS[profile?.role] ? t(ROLE_LABELS[profile.role]) : t('Signed in')}</small>
             </div>
-            <button type="button" className="logout-button" onClick={onLogout}>Sign out</button>
+            <LangSelect onChange={saveLanguage} />
+            <button type="button" className="logout-button" onClick={onLogout}>{t('Sign out')}</button>
           </div>
         </header>
         {pushError && <div className="push-error">{pushError}</div>}
         {statusError && <div className="push-error">{statusError}</div>}
         {updateReady && (
           <div className="update-banner">
-            <span>A new version of the dashboard is available.</span>
-            <button type="button" onClick={() => window.location.reload()}>Update now</button>
+            <span>{t('A new version of the dashboard is available.')}</span>
+            <button type="button" onClick={() => window.location.reload()}>{t('Update now')}</button>
           </div>
         )}
 
         <div className="section-heading">
-          <div><span className="section-kicker">Network overview</span><h2>Today's health snapshot</h2></div>
+          <div><span className="section-kicker">{t('Network overview')}</span><h2>{t("Today's health snapshot")}</h2></div>
           <span className="outlet-count">
-            {outlets.length - statusStats.UNMONITORED} of {outlets.length} outlets monitored
+            {t('{n} of {total} outlets monitored', { n: outlets.length - statusStats.UNMONITORED, total: outlets.length })}
           </span>
         </div>
 
@@ -595,17 +647,17 @@ function Dashboard({ session, profile, onLogout }) {
         <div className="stats-grid">
           <div className="stat-card stat-critical">
             <div className="stat-icon">!</div>
-            <div><strong>{statusStats.CRITICAL_DOWN}</strong><span>Critical outages</span></div>
+            <div><strong>{statusStats.CRITICAL_DOWN}</strong><span>{t('Critical outages')}</span></div>
             <div className="stat-arrow">↗</div>
           </div>
           <div className="stat-card stat-degraded">
             <div className="stat-icon">~</div>
-            <div><strong>{statusStats.DEGRADED}</strong><span>Degraded service</span></div>
+            <div><strong>{statusStats.DEGRADED}</strong><span>{t('Degraded service')}</span></div>
             <div className="stat-arrow">↗</div>
           </div>
           <div className="stat-card stat-healthy">
             <div className="stat-icon">✓</div>
-            <div><strong>{statusStats.HEALTHY}</strong><span>Healthy outlets</span></div>
+            <div><strong>{statusStats.HEALTHY}</strong><span>{t('Healthy outlets')}</span></div>
             <div className="stat-arrow">↗</div>
           </div>
         </div>
@@ -615,19 +667,19 @@ function Dashboard({ session, profile, onLogout }) {
           <input
             type="search"
             className="search-input"
-            placeholder="Search outlets by name, code or area…"
+            placeholder={t('Search outlets by name, code or area…')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search outlets"
+            aria-label={t('Search outlets')}
           />
           {query && (
             <span className="search-count">
-              {filteredOutlets.length} match{filteredOutlets.length === 1 ? '' : 'es'}
+              {filteredOutlets.length === 1 ? t('1 match') : t('{n} matches', { n: filteredOutlets.length })}
             </span>
           )}
         </div>
         <div className="filter-row">
-          <span className="filter-label">Filter by status</span>
+          <span className="filter-label">{t('Filter by status')}</span>
           <div className="filter-buttons">
           {['ALL', 'CRITICAL_DOWN', 'DEGRADED', 'HEALTHY', 'UNMONITORED'].map((status) => (
             <button
@@ -639,7 +691,7 @@ function Dashboard({ session, profile, onLogout }) {
                   : ''
               }`}
             >
-              {status === 'ALL' ? 'All outlets' : status.replace('_', ' ')}
+              {status === 'ALL' ? t('All outlets') : statusLabel(status)}
             </button>
           ))}
           </div>
@@ -661,13 +713,13 @@ function Dashboard({ session, profile, onLogout }) {
         {loading ? (
           <div className="empty-state">
             <div className="loading-spinner" />
-            <div>Loading outlets...</div>
+            <div>{t('Loading outlets…')}</div>
           </div>
         ) : filteredOutlets.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">⌁</div>
-            <strong>No outlets found</strong>
-            <div>{query ? `Nothing matches "${searchQuery.trim()}". Try another name or clear the search.` : 'Try selecting a different status filter.'}</div>
+            <strong>{t('No outlets found')}</strong>
+            <div>{query ? t('Nothing matches "{q}". Try another name or clear the search.', { q: searchQuery.trim() }) : t('Try selecting a different status filter.')}</div>
           </div>
         ) : (
           <div className="outlets-grid">
@@ -687,15 +739,15 @@ function Dashboard({ session, profile, onLogout }) {
                   <div>
                     <div className="outlet-title">
                       <span className="outlet-icon">{getStatusIcon(effectiveStatus)}</span>
-                      <h3>{outlet.outlet_name || 'Unknown Outlet'}</h3>
+                      <h3>{outlet.outlet_name || t('Unknown Outlet')}</h3>
                     </div>
                     <div className="outlet-status">
-                      <span className="status-pulse" /> {effectiveStatus.replace('_', ' ')}
+                      <span className="status-pulse" /> {statusLabel(effectiveStatus)}
                     </div>
                   </div>
                   {(outlet.active_downtime_count || 0) > 0 && (
                     <div className="downtime-badge">
-                      {outlet.active_downtime_count} down
+                      {t('{n} down', { n: outlet.active_downtime_count })}
                     </div>
                   )}
                 </div>
@@ -720,17 +772,17 @@ function Dashboard({ session, profile, onLogout }) {
                           disabled={isEmpty}
                         >
                           <span className="channel-dot" />
-                          <span className="channel-label">{channel.label}</span>
+                          <span className="channel-label">{t(channel.label)}</span>
                           <span className="channel-meta">
                             {isEmpty
-                              ? 'n/a'
+                              ? t('n/a')
                               : notMonitored
-                              ? 'not monitored'
+                              ? t('not monitored')
                               : hasIssue
-                              ? `${channel.downCount}/${channel.total} down`
+                              ? t('{n}/{total} down', { n: channel.downCount, total: channel.total })
                               : noRecentData
-                              ? 'no recent data'
-                              : `${channel.total - channel.staleCount}/${channel.total} ok`}
+                              ? t('no recent data')
+                              : t('{n}/{total} ok', { n: channel.total - channel.staleCount, total: channel.total })}
                           </span>
                           {!isEmpty && <span className="channel-caret">{isExpanded ? '▲' : '▼'}</span>}
                         </button>
@@ -747,9 +799,9 @@ function Dashboard({ session, profile, onLogout }) {
                                   <span className={`station-dot ${isDown ? 'station-down' : isUnknown ? 'station-unknown' : 'station-ok'}`} />
                                   <span className="station-name">{STATION_LABELS[s.station] || s.station}</span>
                                   <span className="station-status">
-                                    {isDown ? 'down' : s.status === 'stale' ? 'no recent data' : isUnknown ? 'not monitored' : 'normal'}
+                                    {isDown ? t('down') : s.status === 'stale' ? t('no recent data') : isUnknown ? t('not monitored') : t('normal')}
                                     {s.last_seen_at && (
-                                      <small className="station-seen"> · seen {new Date(s.last_seen_at).toLocaleTimeString()}</small>
+                                      <small className="station-seen"> · {t('seen {time}', { time: new Date(s.last_seen_at).toLocaleTimeString(locale()) })}</small>
                                     )}
                                   </span>
                                 </div>
@@ -765,12 +817,12 @@ function Dashboard({ session, profile, onLogout }) {
                 {/* Alert Message: green "all operational" banner takes priority once every channel is healthy */}
                 {allOperational ? (
                   <div className="alert-message alert-success">
-                    <p>✅ All systems at {outlet.outlet_name || 'this outlet'} are operational</p>
+                    <p>✅ {outlet.outlet_name ? t('All systems at {name} are operational', { name: outlet.outlet_name }) : t('All systems at this outlet are operational')}</p>
                   </div>
                 ) : (
                   outlet.alert_message && (
                     <div className="alert-message">
-                      <p>{outlet.alert_message}</p>
+                      <p>{alertText(outlet.alert_message)}</p>
                     </div>
                   )
                 )}
@@ -778,7 +830,7 @@ function Dashboard({ session, profile, onLogout }) {
                 {/* Last Alert Time */}
                 {outlet.last_alert_time && (
                   <div className="last-update">
-                    <span>Last update</span>{new Date(outlet.last_alert_time).toLocaleString()}
+                    <span>{t('Last update')}</span>{new Date(outlet.last_alert_time).toLocaleString(locale())}
                   </div>
                 )}
               </div>
@@ -815,12 +867,13 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
+  useLang(); // re-render everything when the language changes
 
   // Fetch the signed-in user's role (and outlet assignments, if any) from the DB.
   const loadProfile = async (userId) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('role, full_name')
+      .select('role, full_name, preferred_language')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -828,6 +881,7 @@ export default function App() {
       console.error('Error loading profile:', error);
       return null;
     }
+    syncLangFromProfile(data?.preferred_language); // same language as the hub
     return data;
   };
 
@@ -873,7 +927,7 @@ export default function App() {
       <div className="dashboard-shell">
         <div className="empty-state" style={{ marginTop: 80 }}>
           <div className="loading-spinner" />
-          <div>Checking session...</div>
+          <div>{t('Checking session…')}</div>
         </div>
       </div>
     );
@@ -888,7 +942,7 @@ export default function App() {
       <div className="dashboard-shell">
         <div className="empty-state" style={{ marginTop: 80 }}>
           <div className="loading-spinner" />
-          <div>Loading your access profile...</div>
+          <div>{t('Loading your access profile…')}</div>
         </div>
       </div>
     );

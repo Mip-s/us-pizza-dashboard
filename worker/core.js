@@ -9,6 +9,8 @@ export const CONFIG = {
   TZ_OFFSET_MIN: 8 * 60,       // Malaysia & Singapore are both UTC+8, no DST
 };
 
+import { LANGS, tr } from './push-i18n.js';
+
 const MIN = 60 * 1000;
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -140,9 +142,13 @@ export function recoveredSystems(stations, recovered) {
 // Devices that run their own agent (POS / KDS / SOK) — as opposed to a pinged ODS
 const AGENT_CHANNELS = new Set(['pos', 'kds', 'kiosk']);
 
-export function pushTitle(outletName, overall, stations, now = Date.now(), recovered = null) {
-  const name = outletName || 'Unknown Outlet';
-  if (overall === 'HEALTHY') return `✅ BACK ONLINE · ${name}`;
+// lang: the recipient's language (push-i18n.js); 'en' gives the English text shown above.
+export function pushTitle(outletName, overall, stations, now = Date.now(), recovered = null, lang = 'en') {
+  const T = (en, vars) => tr(lang, en, vars);
+  const names = (list) => list.map((p) => T(p)).join(' · '); // translates "Food Delivery"; device names stay
+  const status = T(String(overall).replace('_', ' '));
+  const name = outletName || T('Unknown Outlet');
+  if (overall === 'HEALTHY') return T('✅ BACK ONLINE · {name}', { name });
 
   // Outlet went silent: every device with an agent stopped reporting at all
   // -> likely power / internet loss, nothing at the outlet is visible.
@@ -150,7 +156,7 @@ export function pushTitle(outletName, overall, stations, now = Date.now(), recov
   const silent = agents.length > 0 && agents.some((s) => s.channel === 'pos') && agents.every(
     (s) => s.status === 'confirmed' && s.last_seen_at && now - s.last_seen_at > CONFIG.HEARTBEAT_TIMEOUT_MIN * MIN
   );
-  if (silent) return `🚨 ALL SYSTEMS DOWN (NO SIGNAL) · ${name}`;
+  if (silent) return T('🚨 ALL SYSTEMS DOWN (NO SIGNAL) · {name}', { name });
 
   // Something came back but the outlet is not fully healthy yet:
   //   ✅ POS BACK UP · ⚠️ KDS-1 STILL DOWN · US Pizza Kota Damansara
@@ -158,7 +164,9 @@ export function pushTitle(outletName, overall, stations, now = Date.now(), recov
   if (back.length) {
     const still = downSystems(stations);
     const icon = overall === 'CRITICAL_DOWN' ? '🚨' : '⚠️';
-    return `✅ ${back.join(' · ')} BACK UP · ${icon} ${still.length ? `${still.join(' · ')} STILL DOWN` : String(overall).replace('_', ' ')} · ${name}`;
+    return still.length
+      ? T('✅ {back} BACK UP · {icon} {still} STILL DOWN · {name}', { back: names(back), icon, still: names(still), name })
+      : T('✅ {back} BACK UP · {icon} {status} · {name}', { back: names(back), icon, status, name });
   }
 
   // Every monitored category is completely down
@@ -166,11 +174,11 @@ export function pushTitle(outletName, overall, stations, now = Date.now(), recov
   const allDown = monitoredChans.length >= 2 && monitoredChans.every((c) =>
     stations.filter((s) => s.channel === c && s.status !== 'unknown').every((s) => s.status === 'confirmed')
   );
-  if (allDown) return `🚨 ALL SYSTEMS DOWN · ${name}`;
+  if (allDown) return T('🚨 ALL SYSTEMS DOWN · {name}', { name });
 
   const down = downSystems(stations);
-  const what = down.length ? `${down.join(' · ')} DOWN` : String(overall).replace('_', ' ');
-  return `${overall === 'CRITICAL_DOWN' ? '🚨' : '⚠️'} ${what} · ${name}`;
+  const icon = overall === 'CRITICAL_DOWN' ? '🚨' : '⚠️';
+  return down.length ? T('{icon} {what} DOWN · {name}', { icon, what: names(down), name }) : `${icon} ${status} · ${name}`;
 }
 
 export function evaluateOverall(stations) {
@@ -187,10 +195,13 @@ export function evaluateOverall(stations) {
 // ---------------------------------------------------------------------------
 // Alert text (port of public.compose_outlet_alert)
 // ---------------------------------------------------------------------------
-export function composeAlert(outletName, overall, stations, recovered = null) {
-  const name = outletName || 'Unknown Outlet';
-  const back = recoveredSystems(stations, recovered);
-  const backText = back.length && overall !== 'HEALTHY' ? `✅ ${back.join(', ')} back online. ` : '';
+// lang: the recipient's language for push (push-i18n.js). The stored/dashboard text is always 'en'
+// (the dashboard translates it for display), so the English wording must not change.
+export function composeAlert(outletName, overall, stations, recovered = null, lang = 'en') {
+  const T = (en, vars) => tr(lang, en, vars);
+  const name = outletName || T('Unknown Outlet');
+  const back = recoveredSystems(stations, recovered).map((p) => T(p));
+  const backText = back.length && overall !== 'HEALTHY' ? T('✅ {systems} back online. ', { systems: back.join(', ') }) : '';
   const byChan = groupByChannel(stations);
   const fully = [];
   const partially = [];
@@ -198,7 +209,7 @@ export function composeAlert(outletName, overall, stations, recovered = null) {
   for (const chan of CHANNELS) {
     const c = byChan[chan];
     if (!c || c.confirmed === 0) continue;
-    const label = `${CHANNEL_LABEL[chan] || chan.toUpperCase()} (${c.confirmed}/${c.total})`;
+    const label = `${T(CHANNEL_LABEL[chan] || chan.toUpperCase())} (${c.confirmed}/${c.total})`;
     if (c.confirmed === c.total) {
       fully.push(label);
       if (chan === 'pos') posFullyDown = true;
@@ -209,16 +220,16 @@ export function composeAlert(outletName, overall, stations, recovered = null) {
   switch (overall) {
     case 'CRITICAL_DOWN':
       return backText + (posFullyDown
-        ? `🚨 CRITICAL OUTAGE: ${name} cannot take any orders -- POS is completely down (${fully.join(', ')}). Dispatch immediately to restore service.`
-        : `🚨 CRITICAL OUTAGE: ${name} has multiple channels completely down: ${fully.join(', ')}. Dispatch immediately to restore service.`);
+        ? T('🚨 CRITICAL OUTAGE: {name} cannot take any orders -- POS is completely down ({systems}). Dispatch immediately to restore service.', { name, systems: fully.join(', ') })
+        : T('🚨 CRITICAL OUTAGE: {name} has multiple channels completely down: {systems}. Dispatch immediately to restore service.', { name, systems: fully.join(', ') }));
     case 'DEGRADED':
-      return backText + `⚠️ DEGRADED SERVICE: ${name} is operating at reduced capacity.` +
-        (fully.length ? ` ${back.length ? 'Still fully down' : 'Fully down'}: ${fully.join(', ')}.` : '') +
-        (partially.length ? ` ${back.length ? 'Still partially down' : 'Partially down'}: ${partially.join(', ')}.` : '');
+      return backText + T('⚠️ DEGRADED SERVICE: {name} is operating at reduced capacity.', { name }) +
+        (fully.length ? ` ${T(back.length ? 'Still fully down' : 'Fully down')}: ${fully.join(', ')}.` : '') +
+        (partially.length ? ` ${T(back.length ? 'Still partially down' : 'Partially down')}: ${partially.join(', ')}.` : '');
     case 'HEALTHY':
-      return `✅ RESOLVED: ${name} has recovered to normal operations. All channels online.`;
+      return T('✅ RESOLVED: {name} has recovered to normal operations. All channels online.', { name });
     default:
-      return `INFO: ${name} status is ${overall || 'unknown'}`;
+      return T('INFO: {name} status is {status}', { name, status: lang === 'en' ? overall || 'unknown' : T(String(overall || 'UNMONITORED').replace('_', ' ')) });
   }
 }
 
@@ -406,7 +417,11 @@ export async function runMonitor(db, now = Date.now()) {
         .bind(outletId, overall, message, now),
     ]);
     const alert = await db.prepare('SELECT id FROM alerts WHERE outlet_id = ? ORDER BY id DESC LIMIT 1').bind(outletId).first();
-    alerts.push({ id: alert.id, outlet, overall, message, title: pushTitle(outlet.name, overall, stations, now, recovered) });
+    // Push text in every language; push.js picks each recipient's (hub language setting)
+    const texts = Object.fromEntries(
+      LANGS.map((l) => [l, { title: pushTitle(outlet.name, overall, stations, now, recovered, l), body: composeAlert(outlet.name, overall, stations, recovered, l) }])
+    );
+    alerts.push({ id: alert.id, outlet, overall, message, title: texts.en.title, texts });
   }
   return alerts;
 }
