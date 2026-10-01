@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS outlets (
   closing_time     TEXT
 );
 
--- Mirror: monitored stations per outlet (from Supabase public.outlet_stations)
+-- Mirror: monitored stations per outlet (from Supabase uptime.outlet_stations)
 CREATE TABLE IF NOT EXISTS stations (
   outlet_id  TEXT NOT NULL,
   channel    TEXT NOT NULL,       -- pos | kds | kiosk | online
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS stations (
   PRIMARY KEY (outlet_id, channel, station)
 );
 
--- Mirror: heartbeat token hashes (from Supabase public.heartbeat_tokens)
+-- Mirror: heartbeat token hashes (from Supabase uptime.heartbeat_tokens)
 CREATE TABLE IF NOT EXISTS tokens (
   token_hash TEXT PRIMARY KEY,
   outlet_id  TEXT NOT NULL

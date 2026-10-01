@@ -47,17 +47,17 @@ You need three things:
 1. **The outlet's heartbeat token** — one token per outlet, shared by all its devices.
    Found in `heartbeat_tokens.csv` (kept off GitHub — it's a secret).
 2. **A station name for each device** — `POS-1`, `KDS-1`, `KDS-2`, `SOK-1`, `ODS-1` …
-3. **The stations must exist in Supabase** (`public.outlet_stations`). A device reporting a
+3. **The stations must exist in Supabase** (`uptime.outlet_stations`). A device reporting a
    station that isn't listed is **ignored**. Check / add in the Supabase SQL editor:
 
 ```sql
 -- what stations does outlet 081 have?
 select s.channel, s.station
-from public.outlet_stations s join public.outlets o on o.outlet_id = s.outlet_id
+from uptime.outlet_stations s join public.outlets o on o.outlet_id = s.outlet_id
 where o.code = '081' order by 1, 2;
 
 -- add a missing one (channel: pos | kds | kiosk | ods)
-insert into public.outlet_stations (outlet_id, channel, station)
+insert into uptime.outlet_stations (outlet_id, channel, station)
 select outlet_id, 'kds', 'KDS-2' from public.outlets where code = '081';
 ```
 

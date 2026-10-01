@@ -7,11 +7,13 @@
 
 import { CONFIG, sha256Hex } from './core.js';
 
-async function supabase(env, path) {
+// schema = which Supabase schema to read from (outlets live in public, uptime-only tables in uptime)
+async function supabase(env, path, schema = 'public') {
   const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
       apikey: env.SUPABASE_SERVICE_ROLE_KEY,
       Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      'Accept-Profile': schema,
     },
   });
   if (!res.ok) throw new Error(`Supabase ${path}: ${res.status} ${await res.text()}`);
@@ -26,8 +28,8 @@ export async function syncMetadata(env, now = Date.now(), force = false) {
 
   const [outlets, stations, tokens] = await Promise.all([
     supabase(env, 'outlets?select=outlet_id,code,name,country,operating_hours,opening_time,closing_time&order=outlet_id'),
-    supabase(env, 'outlet_stations?select=outlet_id,channel,station&order=outlet_id,channel,station'),
-    supabase(env, 'heartbeat_tokens?select=outlet_id,token_hash&order=token_hash'),
+    supabase(env, 'outlet_stations?select=outlet_id,channel,station&order=outlet_id,channel,station', 'uptime'),
+    supabase(env, 'heartbeat_tokens?select=outlet_id,token_hash&order=token_hash', 'uptime'),
   ]);
 
   // Nothing changed in Supabase? Just note the sync time.
