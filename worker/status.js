@@ -33,7 +33,7 @@ export async function handleStatus(request, env) {
   if (!auth.startsWith('Bearer ')) return json({ error: 'not signed in' }, 401);
 
   // Which outlets can this user see? (Supabase RLS decides; an invalid token -> 401)
-  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/outlets?select=outlet_id,code,name,region&order=code`, {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/outlets?select=outlet_id,code,name,region&monitored=is.true&order=code`, {
     headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: auth },
   });
   if (res.status === 401 || res.status === 403) return json({ error: 'session expired' }, 401);
@@ -83,6 +83,7 @@ export async function handleStatus(request, env) {
 
   const now = Date.now();
   const staleAfter = CONFIG.HEARTBEAT_TIMEOUT_MIN * 60 * 1000;
+  const deliveryStaleAfter = CONFIG.DELIVERY_TIMEOUT_MIN * 60 * 1000; // checked by the store checker, ~hourly
   const payload = outlets.map((o) => {
     const stations = stationsBy[o.outlet_id] || [];
     const overall = evaluateOverall(stations); // live, from current station states
@@ -90,7 +91,7 @@ export async function handleStatus(request, env) {
     // state is just old news - show them as 'stale' (grey, "no recent data"), not green.
     const display = (s) =>
       s.channel !== 'pos' && s.status !== 'unknown' && s.status !== 'confirmed' &&
-      s.last_seen_at && now - s.last_seen_at > staleAfter
+      s.last_seen_at && now - s.last_seen_at > (s.channel === 'delivery' ? deliveryStaleAfter : staleAfter)
         ? 'stale'
         : s.status;
     return {
@@ -131,5 +132,15 @@ export async function handleStatus(request, env) {
     }
   }
 
-  return json({ generated_at: Date.now(), outlets: payload, alerts, last_alert_id: lastAlertId });
+  // Store checkers (GrabFood …): when they last reported and whether they are running or blocked
+  const checkers = {};
+  try {
+    for (const r of (await db.prepare("SELECT key, value FROM meta WHERE key LIKE 'checker_%'").all()).results) {
+      checkers[r.key.slice('checker_'.length)] = JSON.parse(r.value);
+    }
+  } catch (err) {
+    console.warn('checker status unavailable:', err.message);
+  }
+
+  return json({ generated_at: Date.now(), outlets: payload, alerts, last_alert_id: lastAlertId, checkers });
 }

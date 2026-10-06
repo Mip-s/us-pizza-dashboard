@@ -26,11 +26,16 @@ export async function syncMetadata(env, now = Date.now(), force = false) {
   const last = await db.prepare("SELECT value FROM meta WHERE key = 'last_sync'").first();
   if (!force && last && now - Number(last.value) < CONFIG.SYNC_EVERY_MIN * 60 * 1000) return false;
 
-  const [outlets, stations, tokens] = await Promise.all([
-    supabase(env, 'outlets?select=outlet_id,code,name,country,operating_hours,opening_time,closing_time&order=outlet_id'),
+  let [outlets, stations, tokens] = await Promise.all([
+    // monitored = false (franchises, MFM kiosks — 6/10): left out entirely, their heartbeats are refused
+    supabase(env, 'outlets?select=outlet_id,code,name,country,operating_hours,opening_time,closing_time&monitored=is.true&order=outlet_id'),
     supabase(env, 'outlet_stations?select=outlet_id,channel,station&order=outlet_id,channel,station', 'uptime'),
     supabase(env, 'heartbeat_tokens?select=outlet_id,token_hash&order=token_hash', 'uptime'),
   ]);
+
+  const kept = new Set(outlets.map((o) => o.outlet_id));
+  stations = stations.filter((s) => kept.has(s.outlet_id));
+  tokens = tokens.filter((t) => kept.has(t.outlet_id));
 
   // Nothing changed in Supabase? Just note the sync time.
   const hash = await sha256Hex(JSON.stringify([outlets, stations, tokens]));
@@ -65,6 +70,8 @@ export async function syncMetadata(env, now = Date.now(), force = false) {
   for (const t of tokens) {
     stmts.push(db.prepare('INSERT INTO tokens (token_hash, outlet_id) VALUES (?, ?)').bind(t.token_hash, t.outlet_id));
   }
+  // Drop live state for outlets that are no longer monitored
+  stmts.push(db.prepare('DELETE FROM outlet_state WHERE outlet_id NOT IN (SELECT outlet_id FROM outlets)'));
   // Drop live state for stations that no longer exist
   stmts.push(
     db.prepare(
