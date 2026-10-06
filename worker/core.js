@@ -6,6 +6,8 @@ export const CONFIG = {
   HEARTBEAT_TIMEOUT_MIN: 11,   // silence longer than this = suspected (2 missed 5-min heartbeats + margin)
   CONFIRM_AFTER_MIN: 1,        // suspected for this long = confirmed (filters restarts / blips)
   SYNC_EVERY_MIN: 5,           // refresh the Supabase metadata mirror this often
+  DELIVERY_TIMEOUT_MIN: 240,   // food delivery rows (GrabFood …) are checked by the store checker about once an hour;
+                               // older than this = the checker stopped -> no judgement (grey), never 'down'
   TZ_OFFSET_MIN: 8 * 60,       // Malaysia & Singapore are both UTC+8, no DST
 };
 
@@ -118,7 +120,8 @@ export function downSystems(stations) {
     const monitored = stations.filter((s) => s.channel === chan && s.status !== 'unknown');
     const down = monitored.filter((s) => s.status === 'confirmed');
     if (down.length === 0) continue;
-    if (down.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
+    // food delivery is always named by platform (GrabFood), never as the whole "Food Delivery" category
+    if (down.length === monitored.length && chan !== 'delivery') parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
     else parts.push(...down.map((s) => STATION_LABEL[s.station] || s.station).sort());
   }
   return parts;
@@ -133,7 +136,7 @@ export function recoveredSystems(stations, recovered) {
     const monitored = stations.filter((s) => s.channel === chan && s.status !== 'unknown');
     const back = monitored.filter((s) => recovered.has(`${s.channel}|${s.station}`));
     if (back.length === 0) continue;
-    if (back.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
+    if (back.length === monitored.length && chan !== 'delivery') parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
     else parts.push(...back.map((s) => STATION_LABEL[s.station] || s.station).sort());
   }
   return parts;
@@ -209,6 +212,13 @@ export function composeAlert(outletName, overall, stations, recovered = null, la
   for (const chan of CHANNELS) {
     const c = byChan[chan];
     if (!c || c.confirmed === 0) continue;
+    if (chan === 'delivery') {
+      // each delivery platform is its own system: "Fully down: GrabFood", never "Food Delivery (1/3)"
+      for (const s of stations.filter((x) => x.channel === 'delivery' && x.status === 'confirmed').sort((a, b) => a.station.localeCompare(b.station))) {
+        fully.push(STATION_LABEL[s.station] || s.station);
+      }
+      continue;
+    }
     const label = `${T(CHANNEL_LABEL[chan] || chan.toUpperCase())} (${c.confirmed}/${c.total})`;
     if (c.confirmed === c.total) {
       fully.push(label);
@@ -285,6 +295,7 @@ export function parseTelegraf(body) {
       const ok = Number(fields.result_code) === 0 && Number(fields.percent_packet_loss ?? 100) < 100;
       put(tags.peer_channel, tags.peer_station, ok ? 1 : 0, ts, {
         via: 'ping',
+        by: `${selfChannel}|${selfStation}`, // which device pinged (several may ping the same ODS)
         url: tags.url,
         result_code: fields.result_code,
         loss: fields.percent_packet_loss,
@@ -295,6 +306,22 @@ export function parseTelegraf(body) {
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Several devices may ping the same ODS (e.g. the POS and the SOK). "Online wins": the ODS is up if ANY of them
+// got a reply within the last HEARTBEAT_TIMEOUT_MIN; it is down only when every device still reporting fails.
+// (A device that stopped reporting drops out after the timeout, so it can't keep the ODS green.)
+// reporters: { "pos|POS-1": { ok: 1, ts } , ... } from the previous state; by/ok/ts = this report.
+// -> { ok, reporters }
+// ---------------------------------------------------------------------------
+export function combinePings(reporters, by, ok, ts, now = ts) {
+  const keep = {};
+  for (const [k, v] of Object.entries(reporters || {})) {
+    if (v && now - v.ts <= CONFIG.HEARTBEAT_TIMEOUT_MIN * MIN) keep[k] = v;
+  }
+  keep[by || 'unknown'] = { ok: ok ? 1 : 0, ts };
+  return { ok: Object.values(keep).some((v) => v.ok) ? 1 : 0, reporters: keep };
 }
 
 // ---------------------------------------------------------------------------
@@ -342,10 +369,12 @@ export async function runMonitor(db, now = Date.now()) {
     for (const s of stations) {
       if (!s.last_seen_at) continue; // never reported -> not monitored ('unknown')
 
-      const fresh = now - s.last_seen_at <= timeout;
-      // Pinged devices (ODS) are only judged while the device pinging them still reports;
+      const delivery = s.channel === 'delivery';
+      const fresh = now - s.last_seen_at <= (delivery ? CONFIG.DELIVERY_TIMEOUT_MIN * MIN : timeout);
+      // Pinged devices (ODS) are only judged while the device pinging them still reports, and food delivery
+      // stores only while the store checker still reports (a stopped checker is not a closed store);
       // devices with their own agent (POS / KDS / SOK) go down when they fall silent.
-      if (!fresh && isPinged(s)) continue;
+      if (!fresh && (isPinged(s) || delivery)) continue;
       const healthy = fresh && s.reported_ok !== 0;
       const set = (fields) => {
         const keys = Object.keys(fields);

@@ -6,7 +6,7 @@
 // Effect: overwrites the latest state per station in D1 (no history kept).
 //         Status transitions + alerts are done by the monitor Worker every minute.
 
-import { parseTelegraf, sha256Hex } from './core.js';
+import { parseTelegraf, sha256Hex, combinePings } from './core.js';
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
@@ -47,6 +47,18 @@ export async function handleHeartbeat(request, env) {
     if (!known.has(key)) {
       ignored.push(key);
       continue;
+    }
+    // ODS pinged by several devices: online if ANY of them reached it recently (core.combinePings)
+    if (r.detail?.via === 'ping' && r.ok !== null) {
+      const prev = await env.DB.prepare('SELECT detail FROM station_state WHERE outlet_id = ? AND channel = ? AND station = ?')
+        .bind(outletId, r.channel, r.station).first();
+      let reporters = {};
+      try {
+        reporters = JSON.parse(prev?.detail || '{}').reporters || {};
+      } catch {}
+      const c = combinePings(reporters, r.detail.by, r.ok, now, now);
+      r.ok = c.ok;
+      r.detail = { ...r.detail, reporters: c.reporters };
     }
     // ok: 1 / 0 / null (null = "alive" signal only; keep the previous reported_ok)
     stmts.push(
