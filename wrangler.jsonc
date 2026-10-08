@@ -1,5 +1,5 @@
 // Cloudflare Worker config: serves the React app (./build) + /api/* + every-minute monitor cron.
-// Secrets (Worker → Settings → Variables and Secrets): SUPABASE_SERVICE_ROLE_KEY, VAPID_PRIVATE_KEY, DELIVERY_CHECKER_SECRET
+// Secrets (Worker → Settings → Variables and Secrets): SUPABASE_SERVICE_ROLE_KEY, VAPID_PRIVATE_KEY
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "uptime-us-pizza-dashboard",

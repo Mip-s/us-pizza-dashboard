@@ -201,7 +201,6 @@ function Dashboard({ session, profile, onLogout }) {
   const [pushError, setPushError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [statusError, setStatusError] = useState('');
-  const [checkers, setCheckers] = useState({}); // GrabFood store checker: { grab: { status, note, at } }
 
   // iOS only supports Web Push for a site installed via "Add to Home
   // Screen" (running standalone), not a regular Safari tab. Detect this
@@ -332,7 +331,6 @@ function Dashboard({ session, profile, onLogout }) {
         .slice()
         .sort((a, b) => (order[a.overall_status] ?? 9) - (order[b.overall_status] ?? 9) || a.code.localeCompare(b.code));
       setOutlets(sorted);
-      setCheckers(data.checkers || {});
       setChannelRows(sorted.flatMap((o) => o.stations.map((s) => ({ ...s, outlet_id: o.outlet_id }))));
 
       // Toasts for alerts raised since the previous poll (not on first load)
@@ -631,15 +629,6 @@ function Dashboard({ session, profile, onLogout }) {
         </header>
         {pushError && <div className="push-error">{pushError}</div>}
         {statusError && <div className="push-error">{statusError}</div>}
-        {(() => {
-          // GrabFood rows come from the store checker on an office PC: say so when it is blocked or has gone quiet
-          const g = checkers.grab;
-          if (!g) return null;
-          const mins = Math.round((Date.now() - g.at) / 60000);
-          if (g.status === 'blocked') return <div className="push-error">{t('GrabFood checker: Grab is refusing its page visits ({note}). GrabFood status may be out of date.', { note: g.note || '' })}</div>;
-          if (g.status === 'stopped' || mins > 120) return <div className="push-error">{t('GrabFood checker has not reported for {n} min — GrabFood status may be out of date. Check the checker PC.', { n: mins })}</div>;
-          return null;
-        })()}
         {updateReady && (
           <div className="update-banner">
             <span>{t('A new version of the dashboard is available.')}</span>
