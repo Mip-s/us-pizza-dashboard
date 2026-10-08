@@ -4,6 +4,7 @@ import { getPlatformProxy } from 'wrangler';
 import { runMonitor, sha256Hex, isOutletOpen } from '../core.js';
 import { handleHeartbeat } from '../heartbeat.js';
 import { handleStatus } from '../status.js';
+import { handleDelivery } from '../delivery.js';
 
 const MIN = 60000;
 const ALLDAY = JSON.stringify(Object.fromEntries(['mon','tue','wed','thu','fri','sat','sun'].map(d => [d, [['00:00','00:00']]])));
@@ -362,4 +363,65 @@ test('sync rewrites D1 only when Supabase data changed (D1 free-tier write limit
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// ---- GrabFood store checker (/api/delivery/report) ----
+const CHECKER = 'checker-secret';
+async function grabReport(state, checker = { status: 'running' }, secret = CHECKER) {
+  const body = { platform: 'grab', results: state ? [{ outlet_id: 'o-004', state, detail: { name: 'US Pizza SS15' } }] : [], checker };
+  const req = new Request('https://x/api/delivery/report', { method: 'POST', headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await handleDelivery(req, { ...env, DELIVERY_CHECKER_SECRET: CHECKER }, '/api/delivery/report');
+  return { status: res.status, body: await res.json() };
+}
+
+test('delivery: checker needs the secret', async () => {
+  await reset();
+  assert.equal((await grabReport('open', undefined, 'wrong')).status, 401);
+});
+
+test('delivery: paused on Grab -> GrabFood down alert -> open again recovers', async () => {
+  await reset();
+  await send(tg());
+  assert.equal((await grabReport('open')).body.accepted, 1);
+  await runMonitor(db, Date.now());
+  assert.equal((await states())['delivery/grab'], 'normal');
+  await grabReport('paused');
+  const t0 = Date.now(); await runMonitor(db, t0);
+  const a = await runMonitor(db, t0 + 1.1*MIN);
+  assert.equal(a.length, 1); assert.equal(a[0].overall, 'DEGRADED');
+  assert.match(a[0].message, /GrabFood/);
+  assert.doesNotMatch(a[0].message, /Food Delivery/);
+  await grabReport('open');
+  const b = await runMonitor(db, t0 + 2*MIN);
+  assert.equal(b[0].overall, 'HEALTHY');
+});
+
+test('delivery: closed by Grab schedule is fine; unknown outlet/state ignored', async () => {
+  await reset();
+  await send(tg());
+  const r = await grabReport('closed_by_schedule');
+  assert.equal(r.body.accepted, 1);
+  const t0 = Date.now(); await runMonitor(db, t0);
+  assert.equal((await runMonitor(db, t0 + 2*MIN)).length, 0);
+  const bad = await grabReport('weird');
+  assert.deepEqual(bad.body.ignored, ['o-004']);
+});
+
+test('delivery: checker goes quiet -> GrabFood never marked down', async () => {
+  await reset();
+  await send(tg()); await grabReport('open');
+  const t0 = Date.now(); await runMonitor(db, t0);
+  await db.prepare("UPDATE station_state SET last_seen_at = last_seen_at - ? WHERE channel = 'delivery'").bind(5*60*MIN).run();
+  await send(tg());
+  await runMonitor(db, t0 + 1*MIN); const a = await runMonitor(db, t0 + 3*MIN);
+  assert.equal(a.length, 0);
+  assert.equal((await states())['delivery/grab'], 'normal');
+});
+
+test('delivery: blocked checker status is stored for the dashboard', async () => {
+  await reset();
+  await grabReport(null, { status: 'blocked', note: '007: HTTP 403' });
+  const m = await db.prepare("SELECT value FROM meta WHERE key = 'checker_grab'").first();
+  const v = JSON.parse(m.value);
+  assert.equal(v.status, 'blocked'); assert.equal(v.note, '007: HTTP 403'); assert.ok(v.at > 0);
 });
