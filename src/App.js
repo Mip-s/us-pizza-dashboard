@@ -285,24 +285,7 @@ function Dashboard({ session, profile, onLogout }) {
     }
   };
 
-  const handleDisablePush = async () => {
-    setPushBusy(true);
-    setPushError('');
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription) {
-        await supabase.from('push_subscriptions').delete().eq('endpoint', subscription.endpoint);
-        await subscription.unsubscribe();
-      }
-      setPushSubscribed(false);
-    } catch (err) {
-      console.error('Failed to disable push notifications:', err);
-      setPushError(t('Could not disable notifications. Please try again.'));
-    } finally {
-      setPushBusy(false);
-    }
-  };
+  // No disable (9/10): alerts are required for the hub; this dashboard can only turn them on.
 
   // Live status comes from the dashboard's own API (/api/status, Cloudflare D1),
   // which only returns the outlets this user is allowed to see.
@@ -603,9 +586,10 @@ function Dashboard({ session, profile, onLogout }) {
             <button
               type="button"
               className={`push-toggle ${pushSubscribed ? 'push-on' : ''}`}
-              onClick={pushSubscribed ? handleDisablePush : handleEnablePush}
+              onClick={pushSubscribed ? undefined : handleEnablePush}
+              aria-disabled={pushSubscribed || undefined}
               disabled={pushBusy}
-              title={needsIosInstall ? t('Add to Home Screen first (iOS requirement)') : (pushError || undefined)}
+              title={pushSubscribed ? t('Alerts stay on: they are required for the hub and every dashboard.') : needsIosInstall ? t('Add to Home Screen first (iOS requirement)') : (pushError || undefined)}
             >
               <span className="push-dot" />
               {pushBusy

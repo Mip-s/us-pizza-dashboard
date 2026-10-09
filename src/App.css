@@ -178,3 +178,6 @@ html, body { overscroll-behavior-y: contain; }
 /* Language picker (header + sign-in card) */
 .lang-select { color: #65738a; background: #f1f4fa; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 11px; font-weight: 700; padding: 7px 8px; margin-left: 6px; cursor: pointer; max-width: 130px; }
 .login-card .lang-select { display: block; margin: 0 0 10px auto; }
+
+/* 9/10: alerts can't be turned off from a module (required for the hub) — "Alerts on" is a status, not a switch */
+.push-toggle.push-on, .push-toggle.push-on:hover { cursor: default; color: #1c7d5b; border-color: #bfe9d5; }
