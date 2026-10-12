@@ -24,7 +24,6 @@ self.addEventListener('push', (event) => {
   const options = {
     body: payload.body || 'An outlet status has changed.',
     icon: '/logo192.png',
-    badge: '/logo192.png',
     data: { url: payload.url || '/' },
     tag: payload.tag || undefined,
   };
