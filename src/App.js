@@ -582,7 +582,8 @@ function Dashboard({ session, profile, onLogout }) {
             <span className={`refresh-icon ${refreshing ? 'spinning' : ''}`}>⟳</span>
             {refreshing ? t('Refreshing…') : t('Refresh')}
           </button>
-          {(pushSupported || needsIosInstall) && (
+          {/* 12/10: the hub owns alerts — this button only shows while they're off here (e.g. opened straight from a link) */}
+          {(pushSupported || needsIosInstall) && !pushSubscribed && (
             <button
               type="button"
               className={`push-toggle ${pushSubscribed ? 'push-on' : ''}`}
