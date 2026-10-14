@@ -904,6 +904,21 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    // 12/10: also take THIS device off the signed-out person's alerts (shared outlet phones): delete its row in
+    // push_subscriptions while still signed in. The browser subscription stays, so the next person to sign in is
+    // linked to it by the hub. Best effort, never holds up signing out for more than ~3 s.
+    try {
+      const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+      const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        await Promise.race([
+          supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint),
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
+      }
+    } catch (err) {
+      console.warn('alerts cleanup on sign-out failed:', err.message);
+    }
     await supabase.auth.signOut({ scope: 'local' }); // this device only
   };
 

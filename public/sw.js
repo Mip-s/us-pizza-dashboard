@@ -26,6 +26,9 @@ self.addEventListener('push', (event) => {
     icon: '/logo192.png',
     data: { url: payload.url || '/' },
     tag: payload.tag || undefined,
+    // 12/10: a new alert with the same tag (e.g. the 30-min technician chase, or a second outage message for the
+    // same outlet) replaces the old one — renotify makes it ring / vibrate again instead of arriving silently.
+    renotify: Boolean(payload.tag),
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
