@@ -33,6 +33,26 @@ async function recipientUserIds(env, outletId) {
   return [...ids];
 }
 
+// One request for all rows; never fails the alert.
+async function saveNotifications(env, rows) {
+  if (!rows.length) return;
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/notifications`, {
+      method: 'POST',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify(rows),
+    });
+    if (!res.ok) console.error('notification centre: saving failed:', res.status, (await res.text()).slice(0, 200));
+  } catch (err) {
+    console.error('notification centre: saving failed:', err.message);
+  }
+}
+
 // Returns number of notifications delivered.
 // texts = { en: { title, body }, ms: …, zh: …, my: … } from core.js; each person gets their hub language.
 export async function sendAlertPush(env, { outlet, overall, message, title, texts }) {
@@ -63,6 +83,7 @@ export async function sendAlertPush(env, { outlet, overall, message, title, text
 
   let sent = 0;
   const stale = [];
+  const reached = new Map(); // user -> devices reached
   await Promise.all(
     subs.map(async (s) => {
       try {
@@ -74,6 +95,7 @@ export async function sendAlertPush(env, { outlet, overall, message, title, text
         const res = await fetch(s.endpoint, payload);
         if (res.ok) {
           sent += 1;
+          reached.set(s.user_id, (reached.get(s.user_id) || 0) + 1);
         } else {
           const body = await res.text();
           // 404/410 = subscription expired / revoked.
@@ -92,6 +114,12 @@ export async function sendAlertPush(env, { outlet, overall, message, title, text
       }
     })
   );
+
+  // 15/10: notification centre (hub /notifications): one row per person, also people with alerts off (delivered false)
+  await saveNotifications(env, userIds.map((uid) => {
+    const d = JSON.parse(dataFor(langOf.get(uid) || 'en'));
+    return { user_id: uid, module: 'uptime', category: String(overall || '').toLowerCase() || 'alert', title: d.title, body: d.body || null, url: d.url, outlet_id: outlet.outlet_id || null, delivered: (reached.get(uid) || 0) > 0 };
+  }));
 
   // Clean up subscriptions the browser has revoked
   for (const endpoint of stale) {
