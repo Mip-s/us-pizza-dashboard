@@ -116,7 +116,7 @@ export async function sendAlertPush(env, { outlet, overall, message, title, text
   );
 
   // 15/10: notification centre (hub /notifications): one row per person, also people with alerts off (delivered false)
-  await saveNotifications(env, userIds.map((uid) => {
+  await saveNotifications(env, userIds.filter(Boolean).map((uid) => {
     const d = JSON.parse(dataFor(langOf.get(uid) || 'en'));
     return { user_id: uid, module: 'uptime', category: String(overall || '').toLowerCase() || 'alert', title: d.title, body: d.body || null, url: d.url, outlet_id: outlet.outlet_id || null, delivered: (reached.get(uid) || 0) > 0 };
   }));
