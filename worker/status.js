@@ -132,5 +132,15 @@ export async function handleStatus(request, env) {
     }
   }
 
-  return json({ generated_at: Date.now(), outlets: payload, alerts, last_alert_id: lastAlertId });
+  // Store checkers (GrabFood …): when they last reported and whether they are running or blocked
+  const checkers = {};
+  try {
+    for (const r of (await db.prepare("SELECT key, value FROM meta WHERE key LIKE 'checker_%'").all()).results) {
+      checkers[r.key.slice('checker_'.length)] = JSON.parse(r.value);
+    }
+  } catch (err) {
+    console.warn('checker status unavailable:', err.message);
+  }
+
+  return json({ generated_at: Date.now(), outlets: payload, alerts, last_alert_id: lastAlertId, checkers });
 }

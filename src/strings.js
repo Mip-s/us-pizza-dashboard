@@ -2,6 +2,8 @@
 // Placeholders like {n} must stay as they are. Alert texts from worker/core.js are matched in alertText() (App.js).
 const ms = {
   "Alerts stay on: they are required for the hub and every dashboard.": "Makluman sentiasa hidup: ia diperlukan untuk hub dan setiap papan pemuka.",
+  "GrabFood checker: Grab is refusing its page visits ({note}). GrabFood status may be out of date.": "Penyemak GrabFood: Grab menolak lawatan halamannya ({note}). Status GrabFood mungkin tidak terkini.",
+  "GrabFood checker has not reported for {n} min — GrabFood status may be out of date.": "Penyemak GrabFood tidak melapor selama {n} min — status GrabFood mungkin tidak terkini.",
   'CRITICAL DOWN': 'GANGGUAN KRITIKAL', DEGRADED: 'TERJEJAS', HEALTHY: 'SIHAT', UNMONITORED: 'TIDAK DIPANTAU',
   'Operations Team': 'Pasukan Operasi', 'Area Manager': 'Pengurus Kawasan', 'Outlet Manager': 'Pengurus Cawangan', 'Food Delivery': 'Penghantaran Makanan',
   'Still fully down': 'Masih rosak sepenuhnya', 'Fully down': 'Rosak sepenuhnya', 'Still partially down': 'Masih rosak sebahagian', 'Partially down': 'Rosak sebahagian',
@@ -40,6 +42,8 @@ const ms = {
 
 const zh = {
   "Alerts stay on: they are required for the hub and every dashboard.": "提醒保持开启：中心和每个看板都需要提醒。",
+  "GrabFood checker: Grab is refusing its page visits ({note}). GrabFood status may be out of date.": "GrabFood 检查程序：Grab 拒绝其页面访问（{note}）。GrabFood 状态可能不是最新的。",
+  "GrabFood checker has not reported for {n} min — GrabFood status may be out of date.": "GrabFood 检查程序已 {n} 分钟未回报 — GrabFood 状态可能不是最新的。",
   'CRITICAL DOWN': '严重故障', DEGRADED: '部分受影响', HEALTHY: '正常', UNMONITORED: '未监控',
   'Operations Team': '运营团队', 'Area Manager': '区域经理', 'Outlet Manager': '分店经理', 'Food Delivery': '外卖平台',
   'Still fully down': '仍完全故障', 'Fully down': '完全故障', 'Still partially down': '仍部分故障', 'Partially down': '部分故障',
@@ -78,6 +82,8 @@ const zh = {
 
 const my = {
   "Alerts stay on: they are required for the hub and every dashboard.": "သတိပေးချက်များ ဖွင့်ထားမည်- hub နှင့် dashboard တိုင်းအတွက် လိုအပ်သည်။",
+  "GrabFood checker: Grab is refusing its page visits ({note}). GrabFood status may be out of date.": "GrabFood စစ်ဆေးသူ- Grab က စာမျက်နှာ ဝင်ရောက်မှုကို ငြင်းနေသည် ({note})။ GrabFood အခြေအနေ နောက်ကျနိုင်သည်။",
+  "GrabFood checker has not reported for {n} min — GrabFood status may be out of date.": "GrabFood စစ်ဆေးသူ {n} မိနစ် သတင်းမပို့ပါ — GrabFood အခြေအနေ နောက်ကျနိုင်သည်။",
   'CRITICAL DOWN': 'အရေးကြီး ပျက်နေ', DEGRADED: 'တစ်စိတ်တစ်ပိုင်း ထိခိုက်', HEALTHY: 'ကောင်းမွန်', UNMONITORED: 'မစောင့်ကြည့်ရသေး',
   'Operations Team': 'လုပ်ငန်းအဖွဲ့', 'Area Manager': 'ဒေသမန်နေဂျာ', 'Outlet Manager': 'ဆိုင်ခွဲမန်နေဂျာ', 'Food Delivery': 'အစားအစာ ပို့ဆောင်မှု',
   'Still fully down': 'လုံးဝ ပျက်နေဆဲ', 'Fully down': 'လုံးဝ ပျက်နေ', 'Still partially down': 'တစ်စိတ်တစ်ပိုင်း ပျက်နေဆဲ', 'Partially down': 'တစ်စိတ်တစ်ပိုင်း ပျက်နေ',
