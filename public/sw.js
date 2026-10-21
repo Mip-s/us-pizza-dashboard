@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-globals */
 // Service worker for Web Push notifications (US Pizza Operations hub + POS Uptime Monitor).
-// The same file is served at the root of BOTH sites: the hub (static/sw.js) and the uptime
-// Worker (public/sw.js). Keep the two copies identical.
+// The same file is served at the root of every site: the hub (static/sw.js), the uptime Worker (public/sw.js)
+// and the Review Watcher, GRN Chaser and Maintenance Tracker Workers (static/sw.js). Keep all five copies identical.
 
 self.addEventListener('install', () => {
   self.skipWaiting();
