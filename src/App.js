@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import logo from './logo.jpeg';
 import './App.css';
-import AccountMenu from './AccountMenu';
+import AccountMenu, { BackLink } from './AccountMenu';
 import { t, useLang, locale, setLang, getLang, syncLangFromProfile, LANGS, LANGUAGE_NAMES } from './i18n';
 
 // Initialize Supabase
@@ -565,7 +565,7 @@ function Dashboard({ session, profile, onLogout }) {
         {/* 23/10: same header as the other modules — back link, refresh and the account menu on one row, then the title */}
         <header className="dashboard-header">
           <div className="top-row">
-            {IN_HUB ? <a className="hub-back" href="/">{t('← Operations Hub')}</a> : <span />}
+            {IN_HUB ? <BackLink hubHome={hubHome} /> : <span />}
             <div className="top-tools">
               <button
                 type="button"
@@ -577,6 +577,7 @@ function Dashboard({ session, profile, onLogout }) {
               >
                 <span className={`refresh-icon ${refreshing ? 'spinning' : ''}`} aria-hidden="true">⟳</span>
               </button>
+              <span className="ops-bell-slot" />
               <AccountMenu
                 name={profile?.full_name || session?.user?.email}
                 detail={ROLE_LABELS[profile?.role] ? t(ROLE_LABELS[profile.role]) : t('Signed in')}

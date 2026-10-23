@@ -45,6 +45,7 @@ const ms = {
   "Turn on alerts": "Hidupkan makluman",
   "Change password": "Tukar kata laluan",
   "POS Uptime Monitor": "Pemantau Masa Operasi POS",
+  "← Back": "← Kembali",
 };
 
 const zh = {
@@ -92,6 +93,7 @@ const zh = {
   "Turn on alerts": "开启提醒",
   "Change password": "修改密码",
   "POS Uptime Monitor": "POS 运行监控",
+  "← Back": "← 返回",
 };
 
 const my = {
@@ -139,6 +141,7 @@ const my = {
   "Turn on alerts": "သတိပေးချက် ဖွင့်ရန်",
   "Change password": "စကားဝှက် ပြောင်းရန်",
   "POS Uptime Monitor": "POS အလုပ်လုပ်မှု စောင့်ကြည့်ရေး",
+  "← Back": "← နောက်သို့",
 };
 
 const STRINGS = { ms, zh, my };
