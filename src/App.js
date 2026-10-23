@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import logo from './logo.jpeg';
 import './App.css';
+import AccountMenu from './AccountMenu';
 import { t, useLang, locale, setLang, getLang, syncLangFromProfile, LANGS, LANGUAGE_NAMES } from './i18n';
 
 // Initialize Supabase
@@ -15,6 +16,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const BASE = process.env.PUBLIC_URL || '';
 // Inside the hub the URL path starts with /uptime -> show a way back to the hub home.
 const IN_HUB = window.location.pathname.startsWith('/uptime');
+const hubHome = IN_HUB ? '/' : 'https://us-pizza-operations.fazdagroll.workers.dev/';
 
 // Converts a base64url VAPID key into the Uint8Array format the Push API expects.
 function urlBase64ToUint8Array(base64String) {
@@ -560,58 +562,36 @@ function Dashboard({ session, profile, onLogout }) {
       </div>
       <div className="dashboard-container">
         {/* Header */}
+        {/* 23/10: same header as the other modules — back link, refresh and the account menu on one row, then the title */}
         <header className="dashboard-header">
-          <div className="header-brand">
-            <img src={logo} alt="US Pizza" className="header-logo" />
-            <div>
-              {IN_HUB && <a className="hub-back" href="/">{t('← Operations Hub')}</a>}
-              <div className="eyebrow"><span className="live-dot" /> {t('Live operations')}</div>
-              <h1>US Pizza <span>{t('Operations')}</span></h1>
-              <p>{t('Real-time visibility across every outlet in your network.')}</p>
+          <div className="top-row">
+            {IN_HUB ? <a className="hub-back" href="/">{t('← Operations Hub')}</a> : <span />}
+            <div className="top-tools">
+              <button
+                type="button"
+                className="icon-tool"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                title={t('Refresh outlet and channel status now')}
+                aria-label={t('Refresh')}
+              >
+                <span className={`refresh-icon ${refreshing ? 'spinning' : ''}`} aria-hidden="true">⟳</span>
+              </button>
+              <AccountMenu
+                name={profile?.full_name || session?.user?.email}
+                detail={ROLE_LABELS[profile?.role] ? t(ROLE_LABELS[profile.role]) : t('Signed in')}
+                push={{ supported: pushSupported, needsIosInstall, subscribed: pushSubscribed, busy: pushBusy, error: pushError, enable: handleEnablePush }}
+                hubHome={hubHome}
+                onSignOut={onLogout}
+              >
+                <LangSelect onChange={saveLanguage} />
+              </AccountMenu>
             </div>
           </div>
-          <div className="header-badge">
-            <span className="header-badge-icon">◒</span>
-            <div><strong>{t('Monitoring active')}</strong><small>{t('Updates automatically')}</small></div>
-          </div>
-          <button
-            type="button"
-            className="refresh-button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            title={t('Refresh outlet and channel status now')}
-          >
-            <span className={`refresh-icon ${refreshing ? 'spinning' : ''}`}>⟳</span>
-            {refreshing ? t('Refreshing…') : t('Refresh')}
-          </button>
-          {/* 12/10: the hub owns alerts — this button only shows while they're off here (e.g. opened straight from a link) */}
-          {(pushSupported || needsIosInstall) && !pushSubscribed && (
-            <button
-              type="button"
-              className={`push-toggle ${pushSubscribed ? 'push-on' : ''}`}
-              onClick={pushSubscribed ? undefined : handleEnablePush}
-              aria-disabled={pushSubscribed || undefined}
-              disabled={pushBusy}
-              title={pushSubscribed ? t('Alerts stay on: they are required for the hub and every dashboard.') : needsIosInstall ? t('Add to Home Screen first (iOS requirement)') : (pushError || undefined)}
-            >
-              <span className="push-dot" />
-              {pushBusy
-                ? t('Working…')
-                : pushSubscribed
-                ? t('Alerts on')
-                : needsIosInstall
-                ? t('Enable alerts (install first)')
-                : t('Enable alerts')}
-            </button>
-          )}
-          <div className="user-badge">
-            <div className="user-avatar">{(profile?.full_name || session?.user?.email || '?').charAt(0).toUpperCase()}</div>
-            <div>
-              <strong>{profile?.full_name || session?.user?.email}</strong>
-              <small>{ROLE_LABELS[profile?.role] ? t(ROLE_LABELS[profile.role]) : t('Signed in')}</small>
-            </div>
-            <LangSelect onChange={saveLanguage} />
-            <button type="button" className="logout-button" onClick={onLogout}>{t('Sign out')}</button>
+          <div>
+            <div className="eyebrow"><span className="live-dot" /> {t('POS Uptime Monitor')}</div>
+            <h1>{t('Outlet devices')}</h1>
+            <p>{t('POS, KDS and kiosks check in every 5 minutes. Two missed check-ins and a device is marked down.')}</p>
           </div>
         </header>
         {pushError && <div className="push-error">{pushError}</div>}

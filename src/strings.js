@@ -38,6 +38,13 @@ const ms = {
   'not monitored': 'tidak dipantau', '{n}/{total} down': '{n}/{total} rosak', 'no recent data': 'tiada data terkini', '{n}/{total} ok': '{n}/{total} ok', down: 'rosak', normal: 'normal',
   'seen {time}': 'dilihat {time}', 'All systems at {name} are operational': 'Semua sistem di {name} beroperasi', 'All systems at this outlet are operational': 'Semua sistem di cawangan ini beroperasi',
   'Last update': 'Kemas kini terakhir', 'Checking session…': 'Menyemak sesi…', 'Loading your access profile…': 'Memuatkan profil akses anda…', '{n} outlets': '{n} cawangan',
+  "Outlet devices": "Peranti outlet",
+  "POS, KDS and kiosks check in every 5 minutes. Two missed check-ins and a device is marked down.": "POS, KDS dan kiosk melapor setiap 5 minit. Dua laporan terlepas dan peranti ditanda tidak aktif.",
+  "Account": "Akaun",
+  "Alerts off": "Makluman dimatikan",
+  "Turn on alerts": "Hidupkan makluman",
+  "Change password": "Tukar kata laluan",
+  "POS Uptime Monitor": "Pemantau Masa Operasi POS",
 };
 
 const zh = {
@@ -78,6 +85,13 @@ const zh = {
   'not monitored': '未监控', '{n}/{total} down': '{n}/{total} 故障', 'no recent data': '无最新数据', '{n}/{total} ok': '{n}/{total} 正常', down: '故障', normal: '正常',
   'seen {time}': '最后在线 {time}', 'All systems at {name} are operational': '{name} 的所有系统运行正常', 'All systems at this outlet are operational': '此分店的所有系统运行正常',
   'Last update': '最后更新', 'Checking session…': '正在检查会话…', 'Loading your access profile…': '正在加载您的访问权限…', '{n} outlets': '{n} 家分店',
+  "Outlet devices": "分店设备",
+  "POS, KDS and kiosks check in every 5 minutes. Two missed check-ins and a device is marked down.": "POS、KDS 和自助点餐机每 5 分钟报到一次。连续两次未报到，设备即标记为离线。",
+  "Account": "账户",
+  "Alerts off": "提醒已关闭",
+  "Turn on alerts": "开启提醒",
+  "Change password": "修改密码",
+  "POS Uptime Monitor": "POS 运行监控",
 };
 
 const my = {
@@ -118,6 +132,13 @@ const my = {
   'not monitored': 'မစောင့်ကြည့်ရသေး', '{n}/{total} down': '{n}/{total} ပျက်နေ', 'no recent data': 'မကြာသေးမီ ဒေတာ မရှိ', '{n}/{total} ok': '{n}/{total} ကောင်း', down: 'ပျက်နေ', normal: 'ပုံမှန်',
   'seen {time}': '{time} တွင် တွေ့ခဲ့', 'All systems at {name} are operational': '{name} ရှိ စနစ်အားလုံး အလုပ်လုပ်နေသည်', 'All systems at this outlet are operational': 'ဤဆိုင်ခွဲရှိ စနစ်အားလုံး အလုပ်လုပ်နေသည်',
   'Last update': 'နောက်ဆုံး အပ်ဒိတ်', 'Checking session…': 'ဆက်ရှင်ကို စစ်ဆေးနေသည်…', 'Loading your access profile…': 'သင်၏ ဝင်ရောက်ခွင့် ပရိုဖိုင်ကို ဖွင့်နေသည်…', '{n} outlets': 'ဆိုင်ခွဲ {n} ခု',
+  "Outlet devices": "ဆိုင်ခွဲ စက်ပစ္စည်းများ",
+  "POS, KDS and kiosks check in every 5 minutes. Two missed check-ins and a device is marked down.": "POS၊ KDS နှင့် kiosk များသည် ၅ မိနစ်တိုင်း သတင်းပို့သည်။ နှစ်ကြိမ် လွတ်သွားပါက စက်ကို ပျက်နေသည်ဟု သတ်မှတ်သည်။",
+  "Account": "အကောင့်",
+  "Alerts off": "သတိပေးချက် ပိတ်ထား",
+  "Turn on alerts": "သတိပေးချက် ဖွင့်ရန်",
+  "Change password": "စကားဝှက် ပြောင်းရန်",
+  "POS Uptime Monitor": "POS အလုပ်လုပ်မှု စောင့်ကြည့်ရေး",
 };
 
 const STRINGS = { ms, zh, my };

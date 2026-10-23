@@ -23,10 +23,10 @@ html, body { overscroll-behavior-y: contain; }
   background: radial-gradient(circle at 85% -10%, #fdeef1 0, transparent 35%), radial-gradient(circle at 5% 0%, #ebeffb 0, transparent 40%), var(--bg);
   border-top: 5px solid;
   border-image: linear-gradient(90deg, var(--accent) 0 33%, #ffffff 33% 66%, var(--blue) 66% 100%) 1;
-  padding: 42px 24px 64px;
+  padding: 32px 16px 64px;
 }
 
-.dashboard-container { max-width: 1120px; margin: 0 auto; }
+.dashboard-container { max-width: 1100px; margin: 0 auto; }
 .dashboard-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 52px; }
 .header-brand { display: flex; align-items: center; gap: 18px; }
 .header-logo { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; box-shadow: 0 8px 20px #203a6424; flex-shrink: 0; }
@@ -181,3 +181,55 @@ html, body { overscroll-behavior-y: contain; }
 
 /* 9/10: alerts can't be turned off from a module (required for the hub) — "Alerts on" is a status, not a switch */
 .push-toggle.push-on, .push-toggle.push-on:hover { cursor: default; color: #1c7d5b; border-color: #bfe9d5; }
+
+/* 23/10: header = back link + refresh + account button on one row, then the title (AccountMenu.jsx, same as the hub) */
+.top-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.top-row .back { margin-bottom: 0; }
+.top-tools { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.icon-tool { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; color: #65738a; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; font: inherit; font-size: 18px; box-shadow: 0 8px 24px #203a6410; }
+.icon-tool:hover:not(:disabled) { border-color: #aebbe6; color: var(--blue); }
+.icon-tool:disabled { cursor: default; opacity: .65; }
+.icon-tool:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.account { position: relative; min-width: 0; }
+.account-button { display: flex; align-items: center; gap: 10px; max-width: 100%; font: inherit; color: var(--ink); text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 5px 10px 5px 5px; box-shadow: 0 8px 24px #203a6410; }
+.account-button:hover { border-color: #aebbe6; }
+.account-button:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.account-button .user-text { max-width: 220px; }
+.user-avatar { position: relative; }
+.avatar-dot { position: absolute; right: -3px; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; }
+.avatar-dot.is-on { background: #2caf82; }
+.account-chevron { color: var(--muted); font-size: 12px; }
+.account-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 950; width: 290px; max-width: calc(100vw - 32px); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 18px 44px #14203f2e; padding: 8px; display: grid; gap: 2px; }
+.menu-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--line); min-width: 0; }
+.menu-head .user-text { flex: 1 1 auto; }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 10px; }
+.menu-label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.menu-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.menu-dot.is-on { background: #2caf82; }
+.menu-action { font: inherit; font-size: 12px; font-weight: 700; color: #65738a; background: #f1f4fa; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+.menu-action.is-primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+.menu-action.is-primary:hover:not(:disabled) { background: #9c0d24; }
+.menu-action:disabled { opacity: .6; cursor: default; }
+.menu-row .lang-select { margin-left: 0; max-width: 150px; }
+.menu-item { display: block; width: 100%; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); text-align: left; text-decoration: none;
+  background: none; border: 0; border-radius: 10px; padding: 10px; cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: #f1f4fa; outline: none; }
+.menu-item.is-danger { color: #bd3446; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; margin-top: 4px; padding-top: 12px; }
+.menu-item.is-danger:hover { background: #fff0f1; }
+@media (max-width: 560px) {
+  .account-button .user-text { display: none; } /* phones: avatar + chevron only; name is at the top of the menu */
+  .account-menu { width: calc(100vw - 32px); max-width: none; }
+}
+/* Uptime: same header size and spacing as the other modules (was a bigger "US Pizza Operations" hero) */
+.dashboard-header { display: grid; gap: 10px; margin-bottom: 28px; }
+.dashboard-header .eyebrow { margin-bottom: 6px; }
+.dashboard-header h1 { font-size: clamp(26px, 4.5vw, 38px); letter-spacing: -.04em; line-height: 1.1; margin: 0 0 6px; }
+.dashboard-header p { font-size: 14px; }
+.top-row .hub-back { margin-bottom: 0; }
+.user-text { min-width: 0; }
+.user-text strong, .user-text small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-text strong { font-size: 13px; }
+.user-text small { color: var(--muted); font-size: 11px; margin-top: 2px; }
+@media (max-width: 700px) { .dashboard-header { margin-bottom: 24px; } }
