@@ -46,6 +46,9 @@ const ms = {
   "Change password": "Tukar kata laluan",
   "POS Uptime Monitor": "Pemantau Masa Operasi POS",
   "← Back": "← Kembali",
+  'This account has no access profile yet. Ask an administrator to set up your role.': 'Akaun ini belum mempunyai profil akses. Minta pentadbir menetapkan peranan anda.',
+  'Could not load your access profile. Check your connection and try again.': 'Tidak dapat memuatkan profil akses anda. Semak sambungan anda dan cuba lagi.',
+  'Try again': 'Cuba lagi',
 };
 
 const zh = {
@@ -94,6 +97,9 @@ const zh = {
   "Change password": "修改密码",
   "POS Uptime Monitor": "POS 运行监控",
   "← Back": "← 返回",
+  'This account has no access profile yet. Ask an administrator to set up your role.': '此账户尚无访问权限。请联系管理员为您设置角色。',
+  'Could not load your access profile. Check your connection and try again.': '无法加载您的访问权限。请检查网络连接后重试。',
+  'Try again': '重试',
 };
 
 const my = {
@@ -142,6 +148,9 @@ const my = {
   "Change password": "စကားဝှက် ပြောင်းရန်",
   "POS Uptime Monitor": "POS အလုပ်လုပ်မှု စောင့်ကြည့်ရေး",
   "← Back": "← နောက်သို့",
+  'This account has no access profile yet. Ask an administrator to set up your role.': 'ဤအကောင့်တွင် ဝင်ရောက်ခွင့် ပရိုဖိုင် မရှိသေးပါ။ သင်၏ အခန်းကဏ္ဍကို သတ်မှတ်ပေးရန် စီမံခန့်ခွဲသူကို မေးပါ။',
+  'Could not load your access profile. Check your connection and try again.': 'သင်၏ ဝင်ရောက်ခွင့် ပရိုဖိုင်ကို ဖွင့်၍ မရပါ။ ချိတ်ဆက်မှုကို စစ်ဆေးပြီး ထပ်ကြိုးစားပါ။',
+  'Try again': 'ထပ်ကြိုးစားရန်',
 };
 
 const STRINGS = { ms, zh, my };

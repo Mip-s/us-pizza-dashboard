@@ -836,54 +836,70 @@ function Dashboard({ session, profile, onLogout }) {
   );
 }
 
+// Fetch the signed-in user's role (and outlet assignments, if any) from the DB.
+const loadProfile = async (userId) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role, full_name, preferred_language')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error loading profile:', error);
+    return { profile: null, status: 'error' };
+  }
+  syncLangFromProfile(data?.preferred_language); // same language as the hub
+  return { profile: data, status: data ? 'ok' : 'none' };
+};
+
 // Top-level App: manages the auth session and the signed-in user's profile/role,
 // showing the Login screen until both are available.
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  // 'loading' | 'ok' | 'none' (signed in but no profile row, e.g. the admin account) | 'error' (lookup failed)
+  const [profileStatus, setProfileStatus] = useState('loading');
   const [authLoading, setAuthLoading] = useState(true);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
   useLang(); // re-render everything when the language changes
 
-  // Fetch the signed-in user's role (and outlet assignments, if any) from the DB.
-  const loadProfile = async (userId) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('role, full_name, preferred_language')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error loading profile:', error);
-      return null;
-    }
-    syncLangFromProfile(data?.preferred_language); // same language as the hub
-    return data;
-  };
+  const loadedFor = useRef(null); // user id whose profile is loaded (or loading)
+  const applyProfile = useCallback(async (userId) => {
+    loadedFor.current = userId;
+    setProfileStatus('loading');
+    const r = await loadProfile(userId);
+    if (loadedFor.current !== userId) return; // signed out / switched user meanwhile
+    setProfile(r.profile);
+    setProfileStatus(r.status);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
-      if (session?.user) {
-        setProfile(await loadProfile(session.user.id));
-      }
+      if (session?.user) await applyProfile(session.user.id);
       setAuthLoading(false);
     });
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    // No awaited Supabase calls inside this callback: it runs while supabase-js holds its auth lock, and a query
+    // here waits for that same lock (can hang on "Loading your access profile…"). Defer the lookup instead, and
+    // skip it when only the token was refreshed for the same user.
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
-      if (newSession?.user) {
-        setProfile(await loadProfile(newSession.user.id));
-      } else {
+      const userId = newSession?.user?.id || null;
+      if (!userId) {
+        loadedFor.current = null;
         setProfile(null);
+        setProfileStatus('loading');
+      } else if (userId !== loadedFor.current) {
+        setTimeout(() => applyProfile(userId), 0);
       }
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [applyProfile]);
 
   const handleLogin = async (email, password) => {
     setLoginLoading(true);
@@ -927,6 +943,30 @@ export default function App() {
 
   if (!session) {
     return <Login onLogin={handleLogin} loading={loginLoading} errorMessage={loginError} />;
+  }
+
+  if (profileStatus === 'none' || profileStatus === 'error') {
+    return (
+      <div className="dashboard-shell">
+        <div className="empty-state" style={{ marginTop: 80 }}>
+          <div>
+            {profileStatus === 'none'
+              ? t('This account has no access profile yet. Ask an administrator to set up your role.')
+              : t('Could not load your access profile. Check your connection and try again.')}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            {profileStatus === 'error' && (
+              <button className="logout-button" onClick={() => applyProfile(session.user.id)}>
+                {t('Try again')}
+              </button>
+            )}
+            <button className="logout-button" onClick={handleLogout}>
+              {t('Sign out')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!profile) {
