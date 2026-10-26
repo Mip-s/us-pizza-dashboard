@@ -328,11 +328,13 @@ export function combinePings(reporters, by, ok, ts, now = ts) {
 // One monitoring pass (run by the cron Worker every minute)
 // Returns list of { outlet, overall, message } for outlets whose alert changed.
 // ---------------------------------------------------------------------------
-// A station whose status comes from another device's ping (not its own agent)
+// A station whose status comes from another device's ping (not its own agent).
+// Only the parser's via:'ping' counts: a stray ping-shaped report (e.g. a setup test) must not
+// turn an agent device into a pinged one, or it would be skipped once stale and never go down.
 function isPinged(s) {
   try {
     const d = JSON.parse(s.detail || '{}');
-    return d.via === 'ping' || 'url' in d;
+    return d.via === 'ping';
   } catch {
     return false;
   }
