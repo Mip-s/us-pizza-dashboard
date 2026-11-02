@@ -14,6 +14,10 @@ python generate_configs.py --excel "Outlet Info - FeedMe.xlsx" --tokens heartbea
     --url https://<your-dashboard-domain> --process <PosApp.exe>
 ```
 
+Add `--all-devices` to also write `telegraf-KDS-1.conf`, `telegraf-KDS-2.conf` and `telegraf-SOK-1.conf` per outlet
+(same token, own channel/station) and a token-free `configs/ROLLOUT_INDEX.csv` checklist.
+Stations for them: run `add_standard_stations.sql` first.
+
 Output: `configs/<outlet_code>/telegraf.conf`. KDS/kiosk entries without an IP in the
 equipment listing are left commented — fill in the IP and uncomment.
 

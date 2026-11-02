@@ -22,6 +22,9 @@ from collections import defaultdict
 
 import openpyxl
 
+# Windows devices besides the POS that every outlet has (same set-up as 081)
+EXTRA_DEVICES = [("kds", "KDS-1"), ("kds", "KDS-2"), ("kiosk", "SOK-1")]
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -111,6 +114,8 @@ def main():
     ap.add_argument("--url", required=True)
     ap.add_argument("--process", default="")
     ap.add_argument("--out", default="configs")
+    ap.add_argument("--all-devices", action="store_true",
+                    help="also write KDS-1, KDS-2 and SOK-1 configs for every outlet (all outlets are set up like 081 Kota Damansara)")
     args = ap.parse_args()
 
     template = open(os.path.join(HERE, "telegraf.conf.template"), encoding="utf-8").read()
@@ -118,6 +123,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     count = 0
+    index = []
     with open(args.tokens, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             code = row["outlet_code"]
@@ -135,7 +141,30 @@ def main():
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder, "telegraf.conf"), "w", encoding="utf-8", newline="\r\n") as out:
                 out.write(conf)
+            index.append((code, row["outlet_name"], "pos", "POS-1", f"{code}/telegraf.conf"))
             count += 1
+            if args.all_devices:
+                # KDS / kiosk run their own Telegraf: same token, own channel + station, no ODS ping
+                for channel, station in EXTRA_DEVICES:
+                    dev = (
+                        template.replace("{{OUTLET_CODE}}", code)
+                        .replace("{{OUTLET_NAME}}", row["outlet_name"])
+                        .replace("{{CHANNEL}}", channel)
+                        .replace("{{STATION}}", station)
+                        .replace("{{DASHBOARD_URL}}", args.url.rstrip("/"))
+                        .replace("{{TOKEN}}", row["heartbeat_token"])
+                        .replace("{{PROCSTAT_BLOCK}}", procstat_block(""))
+                        .replace("{{PING_BLOCKS}}", "# No ping blocks on a KDS / kiosk (only the POS pings the ODS TV)")
+                    )
+                    name = f"telegraf-{station}.conf"
+                    with open(os.path.join(folder, name), "w", encoding="utf-8", newline="\r\n") as out:
+                        out.write(dev)
+                    index.append((code, row["outlet_name"], channel, station, f"{code}/{name}"))
+    # token-free checklist of every config written (safe to share)
+    with open(os.path.join(args.out, "ROLLOUT_INDEX.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["outlet_code", "outlet_name", "channel", "station", "config_file"])
+        w.writerows(index)
     print(f"Wrote {count} configs to {args.out}/<outlet_code>/telegraf.conf")
 
 
