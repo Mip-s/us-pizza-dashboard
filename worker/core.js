@@ -12,7 +12,6 @@ export const CONFIG = {
 };
 
 import { LANGS, tr } from './push-i18n.js';
-import { loadClosures } from './closure.js';
 
 const MIN = 60 * 1000;
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -342,7 +341,6 @@ function isPinged(s) {
 }
 
 export async function runMonitor(db, now = Date.now()) {
-  const closures = await loadClosures(db, now); // outlet closed mode (6/11)
   const outlets = (await db.prepare('SELECT * FROM outlets').all()).results;
   const rows = (
     await db
@@ -368,8 +366,7 @@ export async function runMonitor(db, now = Date.now()) {
   for (const { outlet, stations } of byOutlet.values()) {
     // Closed outlet: no NEW problems (no suspected/confirmed, no down alerts),
     // but a station that is healthy again may still recover (clears old outages).
-    // 6/11: an outlet in "closed" mode (power cut, renovation ...) counts as closed too, plus a short grace after it ends
-    const open = isOutletOpen(outlet, now) && !closures.has(outlet.outlet_id);
+    const open = isOutletOpen(outlet, now);
 
     for (const s of stations) {
       if (!s.last_seen_at) continue; // never reported -> not monitored ('unknown')
@@ -438,18 +435,6 @@ export async function runMonitor(db, now = Date.now()) {
     const message = composeAlert(outlet.name, overall, stations, recovered);
     const prev = await db.prepare('SELECT alert_message FROM outlet_state WHERE outlet_id = ?').bind(outletId).first();
     if (prev?.alert_message === message) continue;
-    if (closures.has(outletId)) {
-      // closed mode: keep the stored state current, but no alert row, no toast, no push
-      await db
-        .prepare(
-          `INSERT INTO outlet_state (outlet_id, overall_status, alert_message, updated_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT (outlet_id) DO UPDATE SET overall_status = excluded.overall_status,
-             alert_message = excluded.alert_message, updated_at = excluded.updated_at`
-        )
-        .bind(outletId, overall, message, now)
-        .run();
-      continue;
-    }
     await db.batch([
       db
         .prepare(
