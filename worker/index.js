@@ -14,6 +14,7 @@ import { handleStatus } from './status.js';
 import { sendAlertPush } from './push.js';
 import { syncMetadata } from './sync.js';
 import { handleDelivery } from './delivery.js';
+import { handleClosure } from './closure.js';
 
 async function tick(env) {
   const now = Date.now();
@@ -52,6 +53,7 @@ export default {
     try {
       if (pathname === '/api/heartbeat') return await handleHeartbeat(request, env);
       if (pathname === '/api/status') return await handleStatus(request, env);
+      if (pathname === '/api/closure' || pathname === '/api/closure/end') return await handleClosure(request, env, pathname);
       if (pathname.startsWith('/api/delivery/')) return await handleDelivery(request, env, pathname);
     } catch (err) {
       console.error(`${pathname} failed:`, err.stack || err.message);

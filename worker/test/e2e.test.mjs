@@ -15,7 +15,7 @@ const db = env.DB;
 
 async function reset() {
   await db.batch([
-    ...['outlets','stations','tokens','station_state','outlet_state','downtime_log','alerts','meta'].map(t => db.prepare(`DELETE FROM ${t}`)),
+    ...['outlets','stations','tokens','station_state','outlet_state','downtime_log','alerts','meta','outlet_closures'].map(t => db.prepare(`DELETE FROM ${t}`)),
     db.prepare(`INSERT INTO outlets VALUES ('o-004','004','US Pizza SS15','MY',?, '00:00','00:00')`).bind(ALLDAY),
     ...[['pos','POS-1'],['kds','KDS-1'],['kds','KDS-2'],['delivery','grab']].map(([c,s]) =>
       db.prepare('INSERT INTO stations VALUES (?,?,?)').bind('o-004', c, s)),
@@ -424,4 +424,24 @@ test('delivery: blocked checker status is stored for the dashboard', async () =>
   const m = await db.prepare("SELECT value FROM meta WHERE key = 'checker_grab'").first();
   const v = JSON.parse(m.value);
   assert.equal(v.status, 'blocked'); assert.equal(v.note, '007: HTTP 403'); assert.ok(v.at > 0);
+});
+
+test('outlet closed mode: no new problems or alerts while closed, and a grace after it ends', async () => {
+  await reset();
+  await send(tg()); await runMonitor(db, Date.now());
+  const t0 = Date.now();
+  await db.prepare('INSERT INTO outlet_closures (outlet_id, reason, closed_until, created_at, set_by) VALUES (?,?,?,?,?)')
+    .bind('o-004', 'Power cut', t0 + 60 * MIN, t0, 'test').run();
+  await send(tg({ running: 0 })); // POS app stopped
+  assert.deepEqual(await runMonitor(db, t0), []);
+  assert.deepEqual(await runMonitor(db, t0 + 2 * MIN), []);
+  assert.equal((await states())['pos/POS-1'], 'normal'); // nothing raised while closed
+  // ended by hand at +3 min: still quiet for the 15-minute grace
+  await db.prepare('UPDATE outlet_closures SET ended_at = ?').bind(t0 + 3 * MIN).run();
+  assert.deepEqual(await runMonitor(db, t0 + 10 * MIN), []);
+  // after the grace the normal rules apply again: suspected, then confirmed with an alert
+  await runMonitor(db, t0 + 19 * MIN);
+  const alerts = await runMonitor(db, t0 + 21 * MIN);
+  assert.equal(alerts.length, 1);
+  assert.equal((await states())['pos/POS-1'], 'confirmed');
 });
