@@ -8,6 +8,7 @@
 // Query: ?since=<alert id>  -> also return alerts newer than that id (for toasts)
 
 import { evaluateOverall, CONFIG } from './core.js';
+import { loadClosures } from './closure.js';
 
 // D1 can return rare transient errors (and the local simulator does on Windows): retry once.
 async function withRetry(fn) {
@@ -76,6 +77,7 @@ export async function handleStatus(request, env) {
     db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM alerts'),
   ]));
 
+  const closures = await loadClosures(db); // outlet closed mode (6/11)
   const stationsBy = {};
   for (const r of stationRows.results) (stationsBy[r.outlet_id] ||= []).push(r);
   const stateBy = Object.fromEntries(outletRows.results.map((r) => [r.outlet_id, r]));
@@ -94,13 +96,18 @@ export async function handleStatus(request, env) {
       s.last_seen_at && now - s.last_seen_at > (s.channel === 'delivery' ? deliveryStaleAfter : staleAfter)
         ? 'stale'
         : s.status;
+    // 6/11: closed mode shows CLOSED (grey) whatever the devices say; the live state is kept as `devices_status`
+    const cl = closures.get(o.outlet_id);
+    const closed = cl?.active ? { reason: cl.reason, until: cl.until, since: cl.created_at, set_by: cl.set_by } : null;
     return {
       outlet_id: o.outlet_id,
       code: o.code,
       outlet_name: o.name,
       region: o.region,
-      overall_status: overall,
-      alert_message: overall === 'HEALTHY' || overall === 'UNMONITORED' ? null : stateBy[o.outlet_id]?.alert_message || null,
+      overall_status: closed ? 'CLOSED' : overall,
+      devices_status: overall,
+      closure: closed,
+      alert_message: closed || overall === 'HEALTHY' || overall === 'UNMONITORED' ? null : stateBy[o.outlet_id]?.alert_message || null,
       last_alert_time: lastAlertBy[o.outlet_id]?.created_at || null,
       active_downtime_count: stations.filter((s) => s.status === 'confirmed').length,
       stations: stations.map((s) => ({ channel: s.channel, station: s.station, status: display(s), last_seen_at: s.last_seen_at })),
@@ -142,5 +149,5 @@ export async function handleStatus(request, env) {
     console.warn('checker status unavailable:', err.message);
   }
 
-  return json({ generated_at: Date.now(), outlets: payload, alerts, last_alert_id: lastAlertId, checkers });
+  return json({ generated_at: Date.now(), outlets: payload, alerts, last_alert_id: lastAlertId, checkers, can_close: profile.role === 'operations_team' });
 }
