@@ -44,7 +44,7 @@ const PULL_THRESHOLD = 70;
 const STATION_LABELS = { grab: 'GrabFood', foodpanda: 'foodpanda', shopee: 'ShopeeFood' };
 
 // Status names as shown (English keys for t())
-const STATUS_LABELS = { CRITICAL_DOWN: 'CRITICAL DOWN', DEGRADED: 'DEGRADED', HEALTHY: 'HEALTHY', UNMONITORED: 'UNMONITORED', CLOSED: 'CLOSED' };
+const STATUS_LABELS = { CRITICAL_DOWN: 'CRITICAL DOWN', DEGRADED: 'DEGRADED', HEALTHY: 'HEALTHY', UNMONITORED: 'UNMONITORED' };
 const statusLabel = (s) => (STATUS_LABELS[s] ? t(STATUS_LABELS[s]) : String(s || '').replace('_', ' '));
 
 // Alert texts are written in English by worker/core.js (composeAlert); translate them for display.
@@ -190,103 +190,12 @@ const Toast = ({ message, type, onClose }) => {
 
 // Main Dashboard Component (rendered once a session + profile are loaded)
 
-// ---------------------------------------------------------------------------
-// "Outlet closed" mode (6/11, operations only): silence an outlet for a set time (power cut, renovation ...).
-// While closed the monitor raises nothing new and sends no alerts; the card shows grey "Closed".
-// POST /api/closure {outlet_id, until|hours, reason}   POST /api/closure/end {outlet_id}   (worker/closure.js)
-// ---------------------------------------------------------------------------
-const CLOSE_REASONS = ['Power cut', 'Renovation', 'Internet down', 'Closed for a holiday or event'];
-const CLOSE_FOR = [
-  { key: '2', label: '2 hours', hours: 2 },
-  { key: '4', label: '4 hours', hours: 4 },
-  { key: '8', label: '8 hours', hours: 8 },
-  { key: 'tomorrow', label: 'Until tomorrow 06:00' },
-  { key: '72', label: '3 days', hours: 72 },
-  { key: '168', label: '7 days', hours: 168 },
-  { key: '336', label: '14 days', hours: 336 },
-  { key: '720', label: '30 days', hours: 720 },
-  { key: 'custom', label: 'Pick a date and time…' },
-];
-const MYT = 8 * 3600e3;
-// 06:00 tomorrow, Malaysia time (UTC+8, no DST) -> epoch ms
-const tomorrow6 = (now = Date.now()) => Math.floor((now + MYT) / 864e5) * 864e5 + 864e5 + 6 * 3600e3 - MYT;
-const closedUntilText = (ms) => new Date(ms).toLocaleString(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-
-function ClosureForm({ outlet, onDone, onCancel }) {
-  const [reasonPick, setReasonPick] = useState(CLOSE_REASONS[0]);
-  const [other, setOther] = useState('');
-  const [forKey, setForKey] = useState('4');
-  const [custom, setCustom] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  const reason = reasonPick === 'other' ? other.trim() : reasonPick;
-  const until = forKey === 'custom'
-    ? (custom ? new Date(custom).getTime() : NaN) // datetime-local: the browser's own clock (Malaysia)
-    : forKey === 'tomorrow' ? tomorrow6() : Date.now() + CLOSE_FOR.find((x) => x.key === forKey).hours * 3600e3;
-  const valid = reason.length >= 3 && Number.isFinite(until) && until > Date.now() + 60e3;
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setBusy(true);
-    setErr('');
-    try {
-      const { data: { session: cur } } = await supabase.auth.getSession();
-      const res = await fetch(`${BASE}/api/closure`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${cur?.access_token || ''}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ outlet_id: outlet.outlet_id, until, reason }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      await onDone();
-    } catch (e2) {
-      setErr(e2.message);
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form className="closure-form" onSubmit={submit}>
-      <strong>{t('Mark {name} as closed', { name: outlet.outlet_name })}</strong>
-      <p className="closure-help">{t('No new alerts or pushes for this outlet until then. Devices that are still down when it ends will be alerted as usual.')}</p>
-      <label className="closure-field">
-        <span>{t('Reason')}</span>
-        <select value={reasonPick} onChange={(e) => setReasonPick(e.target.value)}>
-          {CLOSE_REASONS.map((r) => <option key={r} value={r}>{t(r)}</option>)}
-          <option value="other">{t('Other…')}</option>
-        </select>
-      </label>
-      {reasonPick === 'other' && (
-        <input className="closure-input" value={other} maxLength={200} placeholder={t('What is happening?')} onChange={(e) => setOther(e.target.value)} autoFocus />
-      )}
-      <label className="closure-field">
-        <span>{t('Closed for')}</span>
-        <select value={forKey} onChange={(e) => setForKey(e.target.value)}>
-          {CLOSE_FOR.map((x) => <option key={x.key} value={x.key}>{t(x.label)}</option>)}
-        </select>
-      </label>
-      {forKey === 'custom' && (
-        <input className="closure-input" type="datetime-local" value={custom} onChange={(e) => setCustom(e.target.value)} />
-      )}
-      {valid && <p className="closure-help">{t('Closed until {time}', { time: closedUntilText(until) })}</p>}
-      {err && <div className="push-error">{err}</div>}
-      <div className="closure-actions">
-        <button type="submit" className="filter-button filter-active" disabled={!valid || busy}>{busy ? t('Saving…') : t('Mark as closed')}</button>
-        <button type="button" className="filter-button" onClick={onCancel} disabled={busy}>{t('Cancel')}</button>
-      </div>
-    </form>
-  );
-}
-
 function Dashboard({ session, profile, onLogout }) {
   const [outlets, setOutlets] = useState([]);
   const [channelRows, setChannelRows] = useState([]);
   const [expandedChannels, setExpandedChannels] = useState(() => new Set());
   const [toasts, setToasts] = useState([]);
   const [filterStatus, setFilterStatus] = useState('ALL');
-  const [canClose, setCanClose] = useState(false); // operations: may mark an outlet as closed
-  const [closing, setClosing] = useState(null); // outlet_id whose "mark as closed" form is open
   // sort + cascading filters (Region -> Outlet -> Device), 6/11
   const [sortKey, setSortKey] = useState('status');
   const [sortDir, setSortDir] = useState('asc');
@@ -410,13 +319,12 @@ function Dashboard({ session, profile, onLogout }) {
       failCountRef.current = 0;
       setStatusError('');
 
-      const order = { CRITICAL_DOWN: 0, DEGRADED: 1, HEALTHY: 2, CLOSED: 3, UNMONITORED: 4 };
+      const order = { CRITICAL_DOWN: 0, DEGRADED: 1, HEALTHY: 2, UNMONITORED: 3 };
       const sorted = (data.outlets || [])
         .slice()
         .sort((a, b) => (order[a.overall_status] ?? 9) - (order[b.overall_status] ?? 9) || a.code.localeCompare(b.code));
       setOutlets(sorted);
       setCheckers(data.checkers || {});
-      setCanClose(Boolean(data.can_close));
       setChannelRows(sorted.flatMap((o) => o.stations.map((s) => ({ ...s, outlet_id: o.outlet_id }))));
 
       // Toasts for alerts raised since the previous poll (not on first load)
@@ -585,22 +493,6 @@ function Dashboard({ session, profile, onLogout }) {
     });
   };
 
-  const endClosure = async (outlet) => {
-    try {
-      const { data: { session: cur } } = await supabase.auth.getSession();
-      const res = await fetch(`${BASE}/api/closure/end`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${cur?.access_token || ''}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ outlet_id: outlet.outlet_id }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      await fetchStatus();
-    } catch (e) {
-      setToasts((prev) => [...prev, { id: `close-${Date.now()}`, message: t("Couldn't reopen: {error}", { error: e.message }), type: 'critical' }]);
-    }
-  };
-
   const toggleChannel = (outletId, channelKey) => {
     const key = `${outletId}:${channelKey}`;
     setExpandedChannels((prev) => {
@@ -618,7 +510,7 @@ function Dashboard({ session, profile, onLogout }) {
   // Filter outlets by status (handle null overall_status)
   // Status filter + free-text search on outlet name / code / region
   const query = searchQuery.trim().toLowerCase();
-  const STATUS_ORDER = { CRITICAL_DOWN: 0, DEGRADED: 1, HEALTHY: 2, CLOSED: 3, UNMONITORED: 4 };
+  const STATUS_ORDER = { CRITICAL_DOWN: 0, DEGRADED: 1, HEALTHY: 2, UNMONITORED: 3 };
   // Cascading filters (6/11): Region -> Outlet (only that region's) -> Device (only types those outlets have; counts the ones down)
   const regions = [...new Set(outlets.map((o) => o.region).filter(Boolean))].sort();
   const regionOutlets = outlets.filter((o) => !fRegion || o.region === fRegion);
@@ -660,7 +552,6 @@ function Dashboard({ session, profile, onLogout }) {
     DEGRADED: outlets.filter((o) => getEffectiveStatus(o) === 'DEGRADED').length,
     HEALTHY: outlets.filter((o) => getEffectiveStatus(o) === 'HEALTHY').length,
     UNMONITORED: outlets.filter((o) => getEffectiveStatus(o) === 'UNMONITORED').length,
-    CLOSED: outlets.filter((o) => getEffectiveStatus(o) === 'CLOSED').length,
   };
 
   const getStatusColor = (status) => {
@@ -671,8 +562,6 @@ function Dashboard({ session, profile, onLogout }) {
         return 'outlet-card outlet-degraded';
       case 'HEALTHY':
         return 'outlet-card outlet-healthy';
-      case 'CLOSED':
-        return 'outlet-card outlet-closed';
       default:
         return 'outlet-card outlet-unknown';
     }
@@ -686,8 +575,6 @@ function Dashboard({ session, profile, onLogout }) {
         return '⚠️';
       case 'HEALTHY':
         return '✅';
-      case 'CLOSED':
-        return '🔒';
       default:
         return 'ℹ️';
     }
@@ -767,7 +654,7 @@ function Dashboard({ session, profile, onLogout }) {
         <div className="section-heading">
           <div><span className="section-kicker">{t('Network overview')}</span><h2>{t("Today's health snapshot")}</h2></div>
           <span className="outlet-count">
-            {t('{n} of {total} outlets monitored', { n: outlets.length - statusStats.UNMONITORED, total: outlets.length })}{statusStats.CLOSED > 0 && ` · ${t('{n} closed', { n: statusStats.CLOSED })}`}
+            {t('{n} of {total} outlets monitored', { n: outlets.length - statusStats.UNMONITORED, total: outlets.length })}
           </span>
         </div>
 
@@ -809,7 +696,7 @@ function Dashboard({ session, profile, onLogout }) {
         <div className="filter-row">
           <span className="filter-label">{t('Filter by status')}</span>
           <div className="filter-buttons">
-          {['ALL', 'CRITICAL_DOWN', 'DEGRADED', 'HEALTHY', 'CLOSED', 'UNMONITORED'].map((status) => (
+          {['ALL', 'CRITICAL_DOWN', 'DEGRADED', 'HEALTHY', 'UNMONITORED'].map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
@@ -921,31 +808,12 @@ function Dashboard({ session, profile, onLogout }) {
                       <span className="status-pulse" /> {statusLabel(effectiveStatus)}
                     </div>
                   </div>
-                  {(outlet.active_downtime_count || 0) > 0 && !outlet.closure && (
+                  {(outlet.active_downtime_count || 0) > 0 && (
                     <div className="downtime-badge">
                       {t('{n} down', { n: outlet.active_downtime_count })}
                     </div>
                   )}
                 </div>
-
-                {/* Outlet closed mode (operations): banner while closed, or the link to start it */}
-                {outlet.closure && (
-                  <div className="closure-banner">
-                    <div>
-                      <strong>{t('Closed until {time}', { time: closedUntilText(outlet.closure.until) })}</strong>
-                      <span> · {CLOSE_REASONS.includes(outlet.closure.reason) ? t(outlet.closure.reason) : outlet.closure.reason}</span>
-                      {outlet.closure.set_by && <small> · {t('set by {name}', { name: outlet.closure.set_by })}</small>}
-                      <div className="closure-help">{t('Alerts are paused for this outlet.')}</div>
-                    </div>
-                    {canClose && <button type="button" className="filter-button" onClick={() => endClosure(outlet)}>{t('Reopen now')}</button>}
-                  </div>
-                )}
-                {canClose && !outlet.closure && closing !== outlet.outlet_id && (
-                  <button type="button" className="link-button closure-open" onClick={() => setClosing(outlet.outlet_id)}>{t('Mark as closed…')}</button>
-                )}
-                {canClose && closing === outlet.outlet_id && (
-                  <ClosureForm outlet={outlet} onCancel={() => setClosing(null)} onDone={async () => { setClosing(null); await fetchStatus(); }} />
-                )}
 
                 {/* Channel Breakdown: POS / KDS / SOK / ODS / Food Delivery */}
                 <div className="channel-grid">
