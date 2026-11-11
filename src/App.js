@@ -27,21 +27,17 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // Channel metadata: maps raw DB channel values to display labels/order
-// ODS = order display screen (TV); Food Delivery = Grab / foodpanda / ShopeeFood
+// ODS = order display screen (TV)
 const CHANNEL_META = {
   pos: { label: 'POS', order: 1 },
   kds: { label: 'KDS', order: 2 },
   kiosk: { label: 'SOK', order: 3 },
   ods: { label: 'ODS', order: 4 },
-  delivery: { label: 'Food Delivery', order: 5 },
 };
-const CHANNEL_ORDER = ['pos', 'kds', 'kiosk', 'ods', 'delivery'];
+const CHANNEL_ORDER = ['pos', 'kds', 'kiosk', 'ods'];
 
 // Pull-to-refresh: how far (px, after resistance) to drag before releasing refreshes
 const PULL_THRESHOLD = 70;
-
-// Friendly names for stations that aren't device IDs
-const STATION_LABELS = { grab: 'GrabFood', foodpanda: 'foodpanda', shopee: 'ShopeeFood' };
 
 // Status names as shown (English keys for t())
 const STATUS_LABELS = { CRITICAL_DOWN: 'CRITICAL DOWN', DEGRADED: 'DEGRADED', HEALTHY: 'HEALTHY', UNMONITORED: 'UNMONITORED' };
@@ -210,7 +206,6 @@ function Dashboard({ session, profile, onLogout }) {
   const [pushError, setPushError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [statusError, setStatusError] = useState('');
-  const [checkers, setCheckers] = useState({}); // GrabFood store checker: { grab: { status, note, at } }
 
   // iOS only supports Web Push for a site installed via "Add to Home
   // Screen" (running standalone), not a regular Safari tab. Detect this
@@ -324,7 +319,6 @@ function Dashboard({ session, profile, onLogout }) {
         .slice()
         .sort((a, b) => (order[a.overall_status] ?? 9) - (order[b.overall_status] ?? 9) || a.code.localeCompare(b.code));
       setOutlets(sorted);
-      setCheckers(data.checkers || {});
       setChannelRows(sorted.flatMap((o) => o.stations.map((s) => ({ ...s, outlet_id: o.outlet_id }))));
 
       // Toasts for alerts raised since the previous poll (not on first load)
@@ -460,7 +454,7 @@ function Dashboard({ session, profile, onLogout }) {
     };
   }, [fetchStatus]);
 
-  // Group channel status rows by outlet, then by channel (pos/kds/kiosk/ods/delivery)
+  // Group channel status rows by outlet, then by channel (pos/kds/kiosk/ods)
   const channelsByOutlet = channelRows.reduce((acc, row) => {
     if (!acc[row.outlet_id]) acc[row.outlet_id] = {};
     if (!acc[row.outlet_id][row.channel]) acc[row.outlet_id][row.channel] = [];
@@ -635,15 +629,6 @@ function Dashboard({ session, profile, onLogout }) {
         </header>
         {pushError && <div className="push-error">{pushError}</div>}
         {statusError && <div className="push-error">{statusError}</div>}
-        {(() => {
-          // GrabFood rows come from the store checker (AWS Lambda, USPIZZA/grabchecker-lambda): say so when it is blocked or has gone quiet
-          const g = checkers.grab;
-          if (!g) return null;
-          const mins = Math.round((Date.now() - g.at) / 60000);
-          if (g.status === 'blocked') return <div className="push-error">{t('GrabFood checker: Grab is refusing its page visits ({note}). GrabFood status may be out of date.', { note: g.note || '' })}</div>;
-          if (g.status === 'stopped' || mins > 120) return <div className="push-error">{t('GrabFood checker has not reported for {n} min — GrabFood status may be out of date.', { n: mins })}</div>;
-          return null;
-        })()}
         {updateReady && (
           <div className="update-banner">
             <span>{t('A new version of the dashboard is available.')}</span>
@@ -815,7 +800,7 @@ function Dashboard({ session, profile, onLogout }) {
                   )}
                 </div>
 
-                {/* Channel Breakdown: POS / KDS / SOK / ODS / Food Delivery */}
+                {/* Channel Breakdown: POS / KDS / SOK / ODS */}
                 <div className="channel-grid">
                   {channelSummaries.map((channel) => {
                     const hasIssue = channel.downCount > 0;
@@ -860,7 +845,7 @@ function Dashboard({ session, profile, onLogout }) {
                               return (
                                 <div key={s.station} className="station-row">
                                   <span className={`station-dot ${isDown ? 'station-down' : isUnknown ? 'station-unknown' : 'station-ok'}`} />
-                                  <span className="station-name">{STATION_LABELS[s.station] || s.station}</span>
+                                  <span className="station-name">{s.station}</span>
                                   <span className="station-status">
                                     {isDown ? t('down') : s.status === 'stale' ? t('no recent data') : isUnknown ? t('not monitored') : t('normal')}
                                     {s.last_seen_at && (

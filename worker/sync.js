@@ -34,7 +34,8 @@ export async function syncMetadata(env, now = Date.now(), force = false) {
   ]);
 
   const kept = new Set(outlets.map((o) => o.outlet_id));
-  stations = stations.filter((s) => kept.has(s.outlet_id));
+  // food delivery stations (Grab / foodpanda / ShopeeFood) are not monitored any more: left in Supabase, not mirrored
+  stations = stations.filter((s) => kept.has(s.outlet_id) && s.channel !== 'delivery');
   tokens = tokens.filter((t) => kept.has(t.outlet_id));
 
   // Nothing changed in Supabase? Just note the sync time.

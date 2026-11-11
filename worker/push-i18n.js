@@ -12,7 +12,7 @@ const ms = {
   '🚨 ALL SYSTEMS DOWN · {name}': '🚨 SEMUA SISTEM ROSAK · {name}',
   '{icon} {what} DOWN · {name}': '{icon} {what} ROSAK · {name}',
   'CRITICAL DOWN': 'GANGGUAN KRITIKAL', DEGRADED: 'TERJEJAS', HEALTHY: 'SIHAT', UNMONITORED: 'TIDAK DIPANTAU',
-  'Unknown Outlet': 'Cawangan tidak diketahui', 'Food Delivery': 'Penghantaran Makanan',
+  'Unknown Outlet': 'Cawangan tidak diketahui',
   '✅ {systems} back online. ': '✅ {systems} kembali dalam talian. ',
   '🚨 CRITICAL OUTAGE: {name} cannot take any orders -- POS is completely down ({systems}). Dispatch immediately to restore service.':
     '🚨 GANGGUAN KRITIKAL: {name} tidak boleh menerima pesanan — POS rosak sepenuhnya ({systems}). Hantar bantuan segera untuk memulihkan perkhidmatan.',
@@ -32,7 +32,7 @@ const zh = {
   '🚨 ALL SYSTEMS DOWN · {name}': '🚨 所有系统故障 · {name}',
   '{icon} {what} DOWN · {name}': '{icon} {what} 故障 · {name}',
   'CRITICAL DOWN': '严重故障', DEGRADED: '部分受影响', HEALTHY: '正常', UNMONITORED: '未监控',
-  'Unknown Outlet': '未知分店', 'Food Delivery': '外卖平台',
+  'Unknown Outlet': '未知分店',
   '✅ {systems} back online. ': '✅ {systems} 已恢复在线。',
   '🚨 CRITICAL OUTAGE: {name} cannot take any orders -- POS is completely down ({systems}). Dispatch immediately to restore service.':
     '🚨 严重故障：{name} 无法接单 —— POS 完全故障（{systems}）。请立即派人恢复服务。',
@@ -52,7 +52,7 @@ const my = {
   '🚨 ALL SYSTEMS DOWN · {name}': '🚨 စနစ်အားလုံး ပျက်နေ · {name}',
   '{icon} {what} DOWN · {name}': '{icon} {what} ပျက်နေ · {name}',
   'CRITICAL DOWN': 'အရေးကြီး ပျက်နေ', DEGRADED: 'တစ်စိတ်တစ်ပိုင်း ထိခိုက်', HEALTHY: 'ကောင်းမွန်', UNMONITORED: 'မစောင့်ကြည့်ရသေး',
-  'Unknown Outlet': 'အမည်မသိ ဆိုင်ခွဲ', 'Food Delivery': 'အစားအစာ ပို့ဆောင်မှု',
+  'Unknown Outlet': 'အမည်မသိ ဆိုင်ခွဲ',
   '✅ {systems} back online. ': '✅ {systems} ပြန်လည် အွန်လိုင်းဖြစ်ပြီ။ ',
   '🚨 CRITICAL OUTAGE: {name} cannot take any orders -- POS is completely down ({systems}). Dispatch immediately to restore service.':
     '🚨 အရေးကြီး ပျက်ယွင်းမှု- {name} သည် အော်ဒါ မလက်ခံနိုင်ပါ — POS လုံးဝ ပျက်နေသည် ({systems})။ ဝန်ဆောင်မှု ပြန်ရရန် ချက်ချင်း လူလွှတ်ပါ။',
