@@ -6,8 +6,6 @@ export const CONFIG = {
   HEARTBEAT_TIMEOUT_MIN: 11,   // silence longer than this = suspected (2 missed 5-min heartbeats + margin)
   CONFIRM_AFTER_MIN: 1,        // suspected for this long = confirmed (filters restarts / blips)
   SYNC_EVERY_MIN: 5,           // refresh the Supabase metadata mirror this often
-  DELIVERY_TIMEOUT_MIN: 240,   // food delivery rows (GrabFood …) are checked by the store checker about once an hour;
-                               // older than this = the checker stopped -> no judgement (grey), never 'down'
   TZ_OFFSET_MIN: 8 * 60,       // Malaysia & Singapore are both UTC+8, no DST
 };
 
@@ -17,9 +15,9 @@ const MIN = 60 * 1000;
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 // Channels: pos = POS terminal, kds = kitchen display, kiosk = self-order kiosk (SOK),
-// ods = order display screen (TV), delivery = food delivery platforms (Grab / foodpanda / ShopeeFood)
-export const CHANNELS = ['pos', 'kds', 'kiosk', 'ods', 'delivery'];
-export const CHANNEL_LABEL = { pos: 'POS', kds: 'KDS', kiosk: 'SOK', ods: 'ODS', delivery: 'Food Delivery' };
+// ods = order display screen (TV)
+export const CHANNELS = ['pos', 'kds', 'kiosk', 'ods'];
+export const CHANNEL_LABEL = { pos: 'POS', kds: 'KDS', kiosk: 'SOK', ods: 'ODS' };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,10 +76,10 @@ export function isOutletOpen(outlet, now = Date.now()) {
 // Severity (port of public.get_channel_severity)
 // ---------------------------------------------------------------------------
 export function channelSeverity(channel, idleMinutes) {
-  // pos/kds stop orders being made; delivery loses online orders; kiosk/ods (TV) are inconveniences
-  const chan = { online: 'delivery' }[channel] || channel;
+  // pos/kds stop orders being made; kiosk/ods (TV) are inconveniences
+  const chan = channel;
   if (idleMinutes >= 60) return ['kiosk', 'ods'].includes(chan) ? 'high' : 'critical';
-  if (idleMinutes >= 30) return ['pos', 'kds'].includes(chan) ? 'critical' : chan === 'delivery' ? 'high' : 'medium';
+  if (idleMinutes >= 30) return ['pos', 'kds'].includes(chan) ? 'critical' : 'medium';
   if (idleMinutes >= 20) return ['pos', 'kds'].includes(chan) ? 'high' : 'medium';
   return 'medium';
 }
@@ -109,10 +107,10 @@ function groupByChannel(stations) {
 //   🚨 ALL SYSTEMS DOWN · US Pizza Kota Damansara          (every monitored category down)
 //   🚨 ALL SYSTEMS DOWN (NO SIGNAL) · US Pizza Kota Damansara (POS stopped reporting: power / internet)
 //   ✅ BACK ONLINE · US Pizza Kota Damansara
-// A fully-down channel is named by its category (POS, KDS, Food Delivery);
-// a partly-down one lists the actual stations (KDS-2, GrabFood).
+// A fully-down channel is named by its category (POS, KDS);
+// a partly-down one lists the actual stations (KDS-2).
 // ---------------------------------------------------------------------------
-const STATION_LABEL = { grab: 'GrabFood', foodpanda: 'foodpanda', shopee: 'ShopeeFood' };
+const STATION_LABEL = {};
 
 export function downSystems(stations) {
   const parts = [];
@@ -120,8 +118,7 @@ export function downSystems(stations) {
     const monitored = stations.filter((s) => s.channel === chan && s.status !== 'unknown');
     const down = monitored.filter((s) => s.status === 'confirmed');
     if (down.length === 0) continue;
-    // food delivery is always named by platform (GrabFood), never as the whole "Food Delivery" category
-    if (down.length === monitored.length && chan !== 'delivery') parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
+    if (down.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
     else parts.push(...down.map((s) => STATION_LABEL[s.station] || s.station).sort());
   }
   return parts;
@@ -136,7 +133,7 @@ export function recoveredSystems(stations, recovered) {
     const monitored = stations.filter((s) => s.channel === chan && s.status !== 'unknown');
     const back = monitored.filter((s) => recovered.has(`${s.channel}|${s.station}`));
     if (back.length === 0) continue;
-    if (back.length === monitored.length && chan !== 'delivery') parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
+    if (back.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
     else parts.push(...back.map((s) => STATION_LABEL[s.station] || s.station).sort());
   }
   return parts;
@@ -148,7 +145,7 @@ const AGENT_CHANNELS = new Set(['pos', 'kds', 'kiosk']);
 // lang: the recipient's language (push-i18n.js); 'en' gives the English text shown above.
 export function pushTitle(outletName, overall, stations, now = Date.now(), recovered = null, lang = 'en') {
   const T = (en, vars) => tr(lang, en, vars);
-  const names = (list) => list.map((p) => T(p)).join(' · '); // translates "Food Delivery"; device names stay
+  const names = (list) => list.map((p) => T(p)).join(' · '); // device names stay
   const status = T(String(overall).replace('_', ' '));
   const name = outletName || T('Unknown Outlet');
   if (overall === 'HEALTHY') return T('✅ BACK ONLINE · {name}', { name });
@@ -212,13 +209,6 @@ export function composeAlert(outletName, overall, stations, recovered = null, la
   for (const chan of CHANNELS) {
     const c = byChan[chan];
     if (!c || c.confirmed === 0) continue;
-    if (chan === 'delivery') {
-      // each delivery platform is its own system: "Fully down: GrabFood", never "Food Delivery (1/3)"
-      for (const s of stations.filter((x) => x.channel === 'delivery' && x.status === 'confirmed').sort((a, b) => a.station.localeCompare(b.station))) {
-        fully.push(STATION_LABEL[s.station] || s.station);
-      }
-      continue;
-    }
     const label = `${T(CHANNEL_LABEL[chan] || chan.toUpperCase())} (${c.confirmed}/${c.total})`;
     if (c.confirmed === c.total) {
       fully.push(label);
@@ -371,12 +361,10 @@ export async function runMonitor(db, now = Date.now()) {
     for (const s of stations) {
       if (!s.last_seen_at) continue; // never reported -> not monitored ('unknown')
 
-      const delivery = s.channel === 'delivery';
-      const fresh = now - s.last_seen_at <= (delivery ? CONFIG.DELIVERY_TIMEOUT_MIN * MIN : timeout);
-      // Pinged devices (ODS) are only judged while the device pinging them still reports, and food delivery
-      // stores only while the store checker still reports (a stopped checker is not a closed store);
+      const fresh = now - s.last_seen_at <= timeout;
+      // Pinged devices (ODS) are only judged while the device pinging them still reports, 
       // devices with their own agent (POS / KDS / SOK) go down when they fall silent.
-      if (!fresh && (isPinged(s) || delivery)) continue;
+      if (!fresh && isPinged(s)) continue;
       const healthy = fresh && s.reported_ok !== 0;
       const set = (fields) => {
         const keys = Object.keys(fields);

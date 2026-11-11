@@ -2,18 +2,16 @@
 //
 //   fetch      /api/heartbeat  ← Telegraf on each POS
 //              /api/status     ← the React dashboard (every 15 s)
-//              /api/delivery/* ← the GrabFood store checker (USPIZZA/grabchecker)
 //              everything else → the React app (static assets from ./build)
 //   scheduled  every minute    → metadata sync + monitoring pass + Web Push
 //
-// Config: wrangler.jsonc (bindings, cron, vars). Secrets: SUPABASE_SERVICE_ROLE_KEY, VAPID_PRIVATE_KEY, DELIVERY_CHECKER_SECRET.
+// Config: wrangler.jsonc (bindings, cron, vars). Secrets: SUPABASE_SERVICE_ROLE_KEY, VAPID_PRIVATE_KEY.
 
 import { runMonitor } from './core.js';
 import { handleHeartbeat } from './heartbeat.js';
 import { handleStatus } from './status.js';
 import { sendAlertPush } from './push.js';
 import { syncMetadata } from './sync.js';
-import { handleDelivery } from './delivery.js';
 
 async function tick(env) {
   const now = Date.now();
@@ -52,7 +50,6 @@ export default {
     try {
       if (pathname === '/api/heartbeat') return await handleHeartbeat(request, env);
       if (pathname === '/api/status') return await handleStatus(request, env);
-      if (pathname.startsWith('/api/delivery/')) return await handleDelivery(request, env, pathname);
     } catch (err) {
       console.error(`${pathname} failed:`, err.stack || err.message);
       return new Response(JSON.stringify({ error: 'internal error' }), {
