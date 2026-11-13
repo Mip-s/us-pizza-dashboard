@@ -380,3 +380,16 @@ test('sync rewrites D1 only when Supabase data changed (D1 free-tier write limit
     globalThis.fetch = realFetch;
   }
 });
+
+test('message changed since the last alert (new wording / cause) -> one fresh alert, then no repeats', async () => {
+  await reset();
+  await send(tg()); await runMonitor(db, Date.now());
+  await send(tg({ running: 0 }));
+  const t0 = Date.now(); await runMonitor(db, t0);
+  assert.equal((await runMonitor(db, t0 + 1.1*MIN)).length, 1);
+  assert.equal((await runMonitor(db, t0 + 2*MIN)).length, 0);             // same text: no repeat
+  await db.prepare("UPDATE outlet_state SET alert_message = 'OLD WORDING'").run(); // simulates a deploy that changed the text
+  const a = await runMonitor(db, t0 + 3*MIN);
+  assert.equal(a.length, 1); assert.match(a[0].message, /App closed/);
+  assert.equal((await runMonitor(db, t0 + 4*MIN)).length, 0);
+});

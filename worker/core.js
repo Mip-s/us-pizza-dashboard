@@ -452,14 +452,22 @@ export async function runMonitor(db, now = Date.now()) {
   if (stmts.length) await db.batch(stmts);
 
   // Roll up changed outlets and write alerts (port of recalc_and_alert_outlet)
+  // Also re-check outlets that still have a confirmed station but did not change this pass: if the message
+  // built from the CURRENT state differs from the stored one (new wording after a deploy, or a cause that
+  // changed, e.g. app closed -> device silent), send a fresh alert. Unchanged text = no repeat.
+  const stored = new Map((await db.prepare('SELECT outlet_id, alert_message FROM outlet_state').all()).results.map((r) => [r.outlet_id, r.alert_message]));
+  const stripBack = (m) => (m || '').replace(/^✅ .+? back online\. /, ''); // "back online" prefix belongs to one alert only
+  const recheck = new Set();
+  for (const { outlet, stations } of byOutlet.values()) {
+    if (!changedOutlets.has(outlet.outlet_id) && stations.some((s) => s.status === 'confirmed')) recheck.add(outlet.outlet_id);
+  }
   const alerts = [];
-  for (const outletId of changedOutlets) {
+  for (const outletId of [...changedOutlets, ...recheck]) {
     const { outlet, stations } = byOutlet.get(outletId);
     const overall = evaluateOverall(stations);
     const recovered = recoveredBy.get(outletId);
     const message = composeAlert(outlet.name, overall, stations, recovered);
-    const prev = await db.prepare('SELECT alert_message FROM outlet_state WHERE outlet_id = ?').bind(outletId).first();
-    if (prev?.alert_message === message) continue;
+    if (recheck.has(outletId) ? stripBack(stored.get(outletId)) === message : stored.get(outletId) === message) continue;
     await db.batch([
       db
         .prepare(
