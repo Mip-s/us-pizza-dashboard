@@ -1,6 +1,11 @@
 // POS Uptime Monitor translations. Key = the English text in the code (t('...')); missing entries fall back to English.
 // Placeholders like {n} must stay as they are. Alert texts from worker/core.js are matched in alertText() (App.js).
 const ms = {
+  '{n}/{total} app closed': '{n}/{total} apl ditutup',
+  'app closed · contact staff': 'apl ditutup · hubungi kakitangan',
+  '📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.': '📴 Apl ditutup (peranti hidup): {systems}. Sila hubungi kakitangan cawangan untuk membukanya.',
+  '🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.': '🚨 KRITIKAL: {name} tidak boleh menerima pesanan — apl POS ditutup.',
+  '🚨 CRITICAL: {name} has apps closed on several channels.': '🚨 KRITIKAL: {name} mempunyai apl yang ditutup pada beberapa saluran.',
   // 6/11: outlet closed mode, sort + cascading filters
   "Saving…": "Menyimpan…",
   "Cancel": "Batal",
@@ -71,6 +76,11 @@ const ms = {
 };
 
 const zh = {
+  '{n}/{total} app closed': '{n}/{total} 应用已关闭',
+  'app closed · contact staff': '应用已关闭 · 请联系店员',
+  '📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.': '📴 应用已关闭（设备开机）：{systems}。请联系分店员工重新打开。',
+  '🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.': '🚨 严重：{name} 无法接单 —— POS 应用已关闭。',
+  '🚨 CRITICAL: {name} has apps closed on several channels.': '🚨 严重：{name} 多个渠道的应用已关闭。',
   // 6/11: outlet closed mode, sort + cascading filters
   "Saving…": "正在保存…",
   "Cancel": "取消",
@@ -141,6 +151,11 @@ const zh = {
 };
 
 const my = {
+  '{n}/{total} app closed': '{n}/{total} အက်ပ် ပိတ်ထား',
+  'app closed · contact staff': 'အက်ပ် ပိတ်ထား · ဝန်ထမ်းကို ဆက်သွယ်ပါ',
+  '📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.': '📴 အက်ပ် ပိတ်ထားသည် (စက် ဖွင့်ထား): {systems}။ ပြန်ဖွင့်ရန် ဆိုင်ဝန်ထမ်းကို ဆက်သွယ်ပါ။',
+  '🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.': '🚨 အရေးကြီး- {name} သည် အော်ဒါ မလက်ခံနိုင်ပါ — POS အက်ပ် ပိတ်ထားသည်။',
+  '🚨 CRITICAL: {name} has apps closed on several channels.': '🚨 အရေးကြီး- {name} တွင် ချန်နယ်များစွာ၌ အက်ပ် ပိတ်ထားသည်။',
   // 6/11: outlet closed mode, sort + cascading filters
   "Saving…": "သိမ်းဆည်းနေသည်…",
   "Cancel": "မလုပ်တော့ပါ",

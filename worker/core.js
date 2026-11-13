@@ -92,9 +92,12 @@ function groupByChannel(stations) {
   const byChan = {};
   for (const s of stations) {
     if (s.status === 'unknown') continue;
-    (byChan[s.channel] ||= { total: 0, confirmed: 0 });
+    (byChan[s.channel] ||= { total: 0, confirmed: 0, closed: 0 });
     byChan[s.channel].total += 1;
-    if (s.status === 'confirmed') byChan[s.channel].confirmed += 1;
+    if (s.status === 'confirmed') {
+      byChan[s.channel].confirmed += 1;
+      if (s.cause === 'app_closed') byChan[s.channel].closed += 1;
+    }
   }
   return byChan;
 }
@@ -112,17 +115,30 @@ function groupByChannel(stations) {
 // ---------------------------------------------------------------------------
 const STATION_LABEL = {};
 
-export function downSystems(stations) {
+// Why a confirmed station is not healthy (set per pass by runMonitor / status.js):
+//  'app_closed' = the device is on and still reporting, but its app is not running
+//                 (Telegraf says procstat running = 0) -> staff must open the app again
+//  'down'       = the device itself stopped reporting / is unreachable (broke, power, network)
+// Only devices with their own agent can be 'app_closed'; a pinged ODS is just up or down.
+export function stationCause(s, now = Date.now()) {
+  const fresh = s.last_seen_at && now - s.last_seen_at <= CONFIG.HEARTBEAT_TIMEOUT_MIN * MIN;
+  return fresh && s.reported_ok === 0 && !isPinged(s) ? 'app_closed' : 'down';
+}
+
+function namedSystems(stations, pick) {
   const parts = [];
   for (const chan of CHANNELS) {
     const monitored = stations.filter((s) => s.channel === chan && s.status !== 'unknown');
-    const down = monitored.filter((s) => s.status === 'confirmed');
-    if (down.length === 0) continue;
-    if (down.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
-    else parts.push(...down.map((s) => STATION_LABEL[s.station] || s.station).sort());
+    const hit = monitored.filter(pick);
+    if (hit.length === 0) continue;
+    if (hit.length === monitored.length) parts.push(CHANNEL_LABEL[chan] || chan.toUpperCase());
+    else parts.push(...hit.map((s) => STATION_LABEL[s.station] || s.station).sort());
   }
   return parts;
 }
+const isClosed = (s) => s.status === 'confirmed' && s.cause === 'app_closed';
+export const downSystems = (stations) => namedSystems(stations, (s) => s.status === 'confirmed' && s.cause !== 'app_closed');
+export const closedSystems = (stations) => namedSystems(stations, isClosed);
 
 // Systems that came back in this monitoring pass (recovered = Set of "channel|station").
 // Named like downSystems: the whole category if all of it recovered, else the stations.
@@ -163,7 +179,11 @@ export function pushTitle(outletName, overall, stations, now = Date.now(), recov
   const back = recoveredSystems(stations, recovered);
   if (back.length) {
     const still = downSystems(stations);
+    const stillClosed = closedSystems(stations);
     const icon = overall === 'CRITICAL_DOWN' ? '🚨' : '⚠️';
+    if (!still.length && stillClosed.length) {
+      return T('✅ {back} BACK UP · {icon} {closed} APP CLOSED · {name}', { back: names(back), icon, closed: names(stillClosed), name });
+    }
     return still.length
       ? T('✅ {back} BACK UP · {icon} {still} STILL DOWN · {name}', { back: names(back), icon, still: names(still), name })
       : T('✅ {back} BACK UP · {icon} {status} · {name}', { back: names(back), icon, status, name });
@@ -172,12 +192,16 @@ export function pushTitle(outletName, overall, stations, now = Date.now(), recov
   // Every monitored category is completely down
   const monitoredChans = [...new Set(stations.filter((s) => s.status !== 'unknown').map((s) => s.channel))];
   const allDown = monitoredChans.length >= 2 && monitoredChans.every((c) =>
-    stations.filter((s) => s.channel === c && s.status !== 'unknown').every((s) => s.status === 'confirmed')
+    stations.filter((s) => s.channel === c && s.status !== 'unknown').every((s) => s.status === 'confirmed' && s.cause !== 'app_closed')
   );
   if (allDown) return T('🚨 ALL SYSTEMS DOWN · {name}', { name });
 
   const down = downSystems(stations);
+  const closed = closedSystems(stations);
   const icon = overall === 'CRITICAL_DOWN' ? '🚨' : '⚠️';
+  // App closed (device is on): tell the staff to open it, rather than calling it a breakdown
+  if (closed.length && down.length) return T('{icon} {what} DOWN · {closed} APP CLOSED · {name}', { icon, what: names(down), closed: names(closed), name });
+  if (closed.length) return T('{icon} {what} APP CLOSED · {name}', { icon, what: names(closed), name });
   return down.length ? T('{icon} {what} DOWN · {name}', { icon, what: names(down), name }) : `${icon} ${status} · ${name}`;
 }
 
@@ -209,23 +233,35 @@ export function composeAlert(outletName, overall, stations, recovered = null, la
   for (const chan of CHANNELS) {
     const c = byChan[chan];
     if (!c || c.confirmed === 0) continue;
-    const label = `${T(CHANNEL_LABEL[chan] || chan.toUpperCase())} (${c.confirmed}/${c.total})`;
-    if (c.confirmed === c.total) {
+    const downN = c.confirmed - c.closed; // app-closed stations are reported separately below
+    if (downN === 0) continue;
+    const label = `${T(CHANNEL_LABEL[chan] || chan.toUpperCase())} (${downN}/${c.total})`;
+    if (downN === c.total) {
       fully.push(label);
       if (chan === 'pos') posFullyDown = true;
     } else {
       partially.push(label);
     }
   }
+  const closed = closedSystems(stations).map((p) => T(p));
+  const closedText = closed.length ? ` ${T('📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.', { systems: closed.join(', ') })}` : '';
   switch (overall) {
     case 'CRITICAL_DOWN':
+      if (fully.length === 0 && closed.length) {
+        // Nothing is broken: the POS app is just closed (device on)
+        const posClosed = stations.some((x) => x.channel === 'pos' && isClosed(x));
+        return backText + (posClosed
+          ? T('🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.', { name })
+          : T('🚨 CRITICAL: {name} has apps closed on several channels.', { name })) + closedText;
+      }
       return backText + (posFullyDown
         ? T('🚨 CRITICAL OUTAGE: {name} cannot take any orders -- POS is completely down ({systems}). Dispatch immediately to restore service.', { name, systems: fully.join(', ') })
-        : T('🚨 CRITICAL OUTAGE: {name} has multiple channels completely down: {systems}. Dispatch immediately to restore service.', { name, systems: fully.join(', ') }));
+        : T('🚨 CRITICAL OUTAGE: {name} has multiple channels completely down: {systems}. Dispatch immediately to restore service.', { name, systems: fully.join(', ') })) + closedText;
     case 'DEGRADED':
       return backText + T('⚠️ DEGRADED SERVICE: {name} is operating at reduced capacity.', { name }) +
         (fully.length ? ` ${T(back.length ? 'Still fully down' : 'Fully down')}: ${fully.join(', ')}.` : '') +
-        (partially.length ? ` ${T(back.length ? 'Still partially down' : 'Partially down')}: ${partially.join(', ')}.` : '');
+        (partially.length ? ` ${T(back.length ? 'Still partially down' : 'Partially down')}: ${partially.join(', ')}.` : '') +
+        closedText;
     case 'HEALTHY':
       return T('✅ RESOLVED: {name} has recovered to normal operations. All channels online.', { name });
     default:
@@ -362,6 +398,7 @@ export async function runMonitor(db, now = Date.now()) {
       if (!s.last_seen_at) continue; // never reported -> not monitored ('unknown')
 
       const fresh = now - s.last_seen_at <= timeout;
+      s.cause = stationCause(s, now);
       // Pinged devices (ODS) are only judged while the device pinging them still reports, 
       // devices with their own agent (POS / KDS / SOK) go down when they fall silent.
       if (!fresh && isPinged(s)) continue;

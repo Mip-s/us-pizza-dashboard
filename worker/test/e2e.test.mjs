@@ -76,7 +76,22 @@ test('POS app closed -> CRITICAL_DOWN', async () => {
   const t0 = Date.now(); await runMonitor(db, t0);
   const a = await runMonitor(db, t0 + 1.1*MIN);
   assert.equal(a[0].overall, 'CRITICAL_DOWN');
-  assert.match(a[0].message, /cannot take any orders -- POS is completely down \(POS \(1\/1\)\)/);
+  // app closed (device still reporting) is NOT a breakdown: it says to contact the staff
+  assert.match(a[0].message, /the POS app is closed\. 📴 App closed \(device is on\): POS\. Please contact the outlet staff/);
+  assert.doesNotMatch(a[0].message, /completely down/);
+  assert.match(a[0].texts.en.title, /POS APP CLOSED/);
+  assert.doesNotMatch(a[0].texts.en.title, /DOWN/);
+});
+
+test('POS silent (device broke) is still DOWN, not app closed', async () => {
+  await reset();
+  await send(tg()); await runMonitor(db, Date.now());
+  const t0 = Date.now();
+  await runMonitor(db, t0 + 12*MIN);
+  const a = await runMonitor(db, t0 + 13.2*MIN);
+  assert.match(a[0].message, /POS is completely down/);
+  assert.match(a[0].texts.en.title, /DOWN/);
+  assert.doesNotMatch(a[0].message, /App closed/);
 });
 
 test('POS goes silent -> only after heartbeat timeout; KDS not double-counted', async () => {
@@ -122,6 +137,9 @@ test('own agent: KDS app closed -> DEGRADED', async () => {
   const a = await runMonitor(db, t0 + 1.1*MIN);
   assert.equal(a[0].overall, 'DEGRADED');
   assert.equal((await states())['kds/KDS-1'], 'confirmed');
+  assert.match(a[0].message, /📴 App closed \(device is on\): KDS\. Please contact the outlet staff/);
+  assert.doesNotMatch(a[0].message, /Partially down|Fully down/);
+  assert.match(a[0].texts.en.title, /KDS APP CLOSED/);
 });
 
 test('own agent: KDS goes silent -> down after heartbeat timeout, POS unaffected', async () => {
@@ -165,9 +183,9 @@ test('POS back but KDS still down -> alert says POS is back, KDS still down', as
   await send(posWithOds());                                  // POS back, KDS still closed
   const back = await runMonitor(db, Date.now() + 1.2*MIN);
   assert.equal(back[0].overall, 'DEGRADED');
-  assert.equal(back[0].title, '✅ POS BACK UP · ⚠️ KDS STILL DOWN · US Pizza SS15'); // KDS-2 never reported, so KDS-1 = all of KDS
+  assert.equal(back[0].title, '✅ POS BACK UP · ⚠️ KDS APP CLOSED · US Pizza SS15'); // KDS-2 never reported, so KDS-1 = all of KDS
   assert.match(back[0].message, /^✅ POS back online\. ⚠️ DEGRADED SERVICE/);
-  assert.match(back[0].message, /Still fully down: KDS \(1\/1\)/);
+  assert.match(back[0].message, /📴 App closed \(device is on\): KDS\. Please contact the outlet staff/);
 });
 
 test('closed outlet: no transitions', async () => {

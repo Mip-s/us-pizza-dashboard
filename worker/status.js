@@ -7,7 +7,7 @@
 //
 // Query: ?since=<alert id>  -> also return alerts newer than that id (for toasts)
 
-import { evaluateOverall, CONFIG } from './core.js';
+import { evaluateOverall, stationCause, CONFIG } from './core.js';
 
 // D1 can return rare transient errors (and the local simulator does on Windows): retry once.
 async function withRetry(fn) {
@@ -59,7 +59,7 @@ export async function handleStatus(request, env) {
     db
       .prepare(
         `SELECT s.outlet_id, s.channel, s.station, COALESCE(st.status, 'unknown') AS status,
-                st.last_seen_at, st.last_ok_at, st.reported_ok
+                st.last_seen_at, st.last_ok_at, st.reported_ok, st.detail
            FROM stations s
            LEFT JOIN station_state st
              ON st.outlet_id = s.outlet_id AND st.channel = s.channel AND st.station = s.station
@@ -84,7 +84,7 @@ export async function handleStatus(request, env) {
   const now = Date.now();
   const staleAfter = CONFIG.HEARTBEAT_TIMEOUT_MIN * 60 * 1000;
   const payload = outlets.map((o) => {
-    const stations = stationsBy[o.outlet_id] || [];
+    const stations = (stationsBy[o.outlet_id] || []).map((s) => ({ ...s, cause: stationCause(s, Date.now()) }));
     const overall = evaluateOverall(stations); // live, from current station states
     // KDS / SOK / ODS are checked BY the POS. When the POS stops reporting, their last
     // state is just old news - show them as 'stale' (grey, "no recent data"), not green.
@@ -101,8 +101,8 @@ export async function handleStatus(request, env) {
       overall_status: overall,
       alert_message: overall === 'HEALTHY' || overall === 'UNMONITORED' ? null : stateBy[o.outlet_id]?.alert_message || null,
       last_alert_time: lastAlertBy[o.outlet_id]?.created_at || null,
-      active_downtime_count: stations.filter((s) => s.status === 'confirmed').length,
-      stations: stations.map((s) => ({ channel: s.channel, station: s.station, status: display(s), last_seen_at: s.last_seen_at })),
+      active_downtime_count: stations.filter((s) => s.status === 'confirmed' && s.cause !== 'app_closed').length,
+      stations: stations.map((s) => ({ channel: s.channel, station: s.station, status: display(s), cause: s.status === 'confirmed' ? s.cause : null, last_seen_at: s.last_seen_at })),
     };
   });
 
