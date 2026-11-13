@@ -894,7 +894,7 @@ function Dashboard({ session, profile, onLogout }) {
                 {/* Last Alert Time */}
                 {outlet.last_alert_time && (
                   <div className="last-update">
-                    <span>{t('Last update')}</span>{new Date(outlet.last_alert_time).toLocaleString(locale())}
+                    <span>{t('Last alert')}</span>{new Date(outlet.last_alert_time).toLocaleString(locale())}
                   </div>
                 )}
               </div>
