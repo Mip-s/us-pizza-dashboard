@@ -5,6 +5,12 @@ export const LANGS = ['en', 'ms', 'zh', 'my'];
 export const pickLang = (l) => (LANGS.includes(l) ? l : 'en');
 
 const ms = {
+  '✅ {back} BACK UP · {icon} {closed} APP CLOSED · {name}': '✅ {back} PULIH · {icon} {closed} APL DITUTUP · {name}',
+  '{icon} {what} APP CLOSED · {name}': '{icon} {what} APL DITUTUP · {name}',
+  '{icon} {what} DOWN · {closed} APP CLOSED · {name}': '{icon} {what} ROSAK · {closed} APL DITUTUP · {name}',
+  '📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.': '📴 Apl ditutup (peranti hidup): {systems}. Sila hubungi kakitangan cawangan untuk membukanya.',
+  '🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.': '🚨 KRITIKAL: {name} tidak boleh menerima pesanan — apl POS ditutup.',
+  '🚨 CRITICAL: {name} has apps closed on several channels.': '🚨 KRITIKAL: {name} mempunyai apl yang ditutup pada beberapa saluran.',
   '✅ BACK ONLINE · {name}': '✅ KEMBALI DALAM TALIAN · {name}',
   '🚨 ALL SYSTEMS DOWN (NO SIGNAL) · {name}': '🚨 SEMUA SISTEM ROSAK (TIADA ISYARAT) · {name}',
   '✅ {back} BACK UP · {icon} {still} STILL DOWN · {name}': '✅ {back} PULIH · {icon} {still} MASIH ROSAK · {name}',
@@ -25,6 +31,12 @@ const ms = {
 };
 
 const zh = {
+  '✅ {back} BACK UP · {icon} {closed} APP CLOSED · {name}': '✅ {back} 已恢复 · {icon} {closed} 应用已关闭 · {name}',
+  '{icon} {what} APP CLOSED · {name}': '{icon} {what} 应用已关闭 · {name}',
+  '{icon} {what} DOWN · {closed} APP CLOSED · {name}': '{icon} {what} 故障 · {closed} 应用已关闭 · {name}',
+  '📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.': '📴 应用已关闭（设备开机）：{systems}。请联系分店员工重新打开。',
+  '🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.': '🚨 严重：{name} 无法接单 —— POS 应用已关闭。',
+  '🚨 CRITICAL: {name} has apps closed on several channels.': '🚨 严重：{name} 多个渠道的应用已关闭。',
   '✅ BACK ONLINE · {name}': '✅ 已恢复在线 · {name}',
   '🚨 ALL SYSTEMS DOWN (NO SIGNAL) · {name}': '🚨 所有系统故障（无信号）· {name}',
   '✅ {back} BACK UP · {icon} {still} STILL DOWN · {name}': '✅ {back} 已恢复 · {icon} {still} 仍故障 · {name}',
@@ -45,6 +57,12 @@ const zh = {
 };
 
 const my = {
+  '✅ {back} BACK UP · {icon} {closed} APP CLOSED · {name}': '✅ {back} ပြန်ကောင်းပြီ · {icon} {closed} အက်ပ် ပိတ်ထား · {name}',
+  '{icon} {what} APP CLOSED · {name}': '{icon} {what} အက်ပ် ပိတ်ထား · {name}',
+  '{icon} {what} DOWN · {closed} APP CLOSED · {name}': '{icon} {what} ပျက်နေ · {closed} အက်ပ် ပိတ်ထား · {name}',
+  '📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.': '📴 အက်ပ် ပိတ်ထားသည် (စက် ဖွင့်ထား): {systems}။ ပြန်ဖွင့်ရန် ဆိုင်ဝန်ထမ်းကို ဆက်သွယ်ပါ။',
+  '🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.': '🚨 အရေးကြီး- {name} သည် အော်ဒါ မလက်ခံနိုင်ပါ — POS အက်ပ် ပိတ်ထားသည်။',
+  '🚨 CRITICAL: {name} has apps closed on several channels.': '🚨 အရေးကြီး- {name} တွင် ချန်နယ်များစွာ၌ အက်ပ် ပိတ်ထားသည်။',
   '✅ BACK ONLINE · {name}': '✅ ပြန်လည် အွန်လိုင်း · {name}',
   '🚨 ALL SYSTEMS DOWN (NO SIGNAL) · {name}': '🚨 စနစ်အားလုံး ပျက်နေ (အချက်ပြမှု မရှိ) · {name}',
   '✅ {back} BACK UP · {icon} {still} STILL DOWN · {name}': '✅ {back} ပြန်ကောင်းပြီ · {icon} {still} ပျက်နေဆဲ · {name}',

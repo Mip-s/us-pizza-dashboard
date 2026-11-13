@@ -53,7 +53,18 @@ function alertText(msg) {
     prefix = `${t('✅ {systems} back online.', { systems: m[1] })} `;
     s = m[2];
   }
+  // App-closed sentence appended by composeAlert
+  const mc = s.match(/^(.*?) ?📴 App closed \(device is on\): (.+)\. Please contact the outlet staff to open it\.$/s);
+  let suffix = '';
+  if (mc) {
+    s = mc[1];
+    suffix = ` ${t('📴 App closed (device is on): {systems}. Please contact the outlet staff to open it.', { systems: mc[2] })}`;
+  }
   const rules = [
+    [/^🚨 CRITICAL: (.+) cannot take any orders -- the POS app is closed\.$/s,
+      (x) => t('🚨 CRITICAL: {name} cannot take any orders -- the POS app is closed.', { name: x[1] })],
+    [/^🚨 CRITICAL: (.+) has apps closed on several channels\.$/s,
+      (x) => t('🚨 CRITICAL: {name} has apps closed on several channels.', { name: x[1] })],
     [/^🚨 CRITICAL OUTAGE: (.+) cannot take any orders -- POS is completely down \((.+)\)\. Dispatch immediately to restore service\.$/s,
       (x) => t('🚨 CRITICAL OUTAGE: {name} cannot take any orders — POS is completely down ({systems}). Dispatch immediately to restore service.', { name: x[1], systems: x[2] })],
     [/^🚨 CRITICAL OUTAGE: (.+) has multiple channels completely down: (.+)\. Dispatch immediately to restore service\.$/s,
@@ -64,14 +75,14 @@ function alertText(msg) {
   ];
   for (const [re, fn] of rules) {
     m = s.match(re);
-    if (m) return prefix + fn(m);
+    if (m) return prefix + fn(m) + suffix;
   }
   m = s.match(/^⚠️ DEGRADED SERVICE: (.+?) is operating at reduced capacity\.(.*)$/s);
   if (m) {
     const rest = m[2].replace(/ (Still fully down|Fully down|Still partially down|Partially down): (.+?)\.(?= |$)/g, (_, what, list) => ` ${t(what)}: ${list}.`);
-    return prefix + t('⚠️ DEGRADED SERVICE: {name} is operating at reduced capacity.', { name: m[1] }) + rest;
+    return prefix + t('⚠️ DEGRADED SERVICE: {name} is operating at reduced capacity.', { name: m[1] }) + rest + suffix;
   }
-  return prefix + s;
+  return prefix + s + suffix;
 }
 
 // Language picker (the same setting as the hub's; saved to the profile so push messages follow it too)
@@ -470,7 +481,8 @@ function Dashboard({ session, profile, onLogout }) {
       // Only 'confirmed' counts as down. 'suspected' is an internal grace
       // period before confirmation and is intentionally treated the same
       // as 'normal' here so it never surfaces in the UI or notifications.
-      const confirmedCount = stations.filter((s) => s.status === 'confirmed').length;
+      const closedCount = stations.filter((s) => s.status === 'confirmed' && s.cause === 'app_closed').length;
+      const confirmedCount = stations.filter((s) => s.status === 'confirmed').length - closedCount;
       // 'unknown' = no heartbeat has ever reported this station (not monitored yet)
       const monitored = stations.filter((s) => s.status !== 'unknown').length;
       // 'stale' = checked by the POS, but the POS hasn't reported for a while (no recent data)
@@ -480,6 +492,7 @@ function Dashboard({ session, profile, onLogout }) {
         label: CHANNEL_META[key].label,
         stations,
         downCount: confirmedCount,
+        closedCount, // device on, app closed -> staff must open it (not a breakdown)
         total: stations.length,
         monitored,
         staleCount,
@@ -803,7 +816,7 @@ function Dashboard({ session, profile, onLogout }) {
                 {/* Channel Breakdown: POS / KDS / SOK / ODS */}
                 <div className="channel-grid">
                   {channelSummaries.map((channel) => {
-                    const hasIssue = channel.downCount > 0;
+                    const hasIssue = channel.downCount > 0 || channel.closedCount > 0;
                     const isEmpty = channel.total === 0;
                     const notMonitored = !isEmpty && channel.monitored === 0;
                     const noRecentData = !isEmpty && !notMonitored && !hasIssue && channel.staleCount === channel.monitored;
@@ -827,7 +840,9 @@ function Dashboard({ session, profile, onLogout }) {
                               : notMonitored
                               ? t('not monitored')
                               : hasIssue
-                              ? t('{n}/{total} down', { n: channel.downCount, total: channel.total })
+                              ? channel.downCount > 0
+                                ? t('{n}/{total} down', { n: channel.downCount, total: channel.total })
+                                : t('{n}/{total} app closed', { n: channel.closedCount, total: channel.total })
                               : noRecentData
                               ? t('no recent data')
                               : t('{n}/{total} ok', { n: channel.total - channel.staleCount, total: channel.total })}
@@ -840,14 +855,15 @@ function Dashboard({ session, profile, onLogout }) {
                               // 'suspected' is an internal grace period before
                               // confirmation - treat it visually the same as
                               // 'normal' so it never shows as an issue.
-                              const isDown = s.status === 'confirmed';
+                              const isClosed = s.status === 'confirmed' && s.cause === 'app_closed';
+                              const isDown = s.status === 'confirmed' && !isClosed;
                               const isUnknown = s.status === 'unknown' || s.status === 'stale';
                               return (
                                 <div key={s.station} className="station-row">
-                                  <span className={`station-dot ${isDown ? 'station-down' : isUnknown ? 'station-unknown' : 'station-ok'}`} />
+                                  <span className={`station-dot ${isDown ? 'station-down' : isClosed ? 'station-closed' : isUnknown ? 'station-unknown' : 'station-ok'}`} />
                                   <span className="station-name">{s.station}</span>
                                   <span className="station-status">
-                                    {isDown ? t('down') : s.status === 'stale' ? t('no recent data') : isUnknown ? t('not monitored') : t('normal')}
+                                    {isDown ? t('down') : isClosed ? t('app closed · contact staff') : s.status === 'stale' ? t('no recent data') : isUnknown ? t('not monitored') : t('normal')}
                                     {s.last_seen_at && (
                                       <small className="station-seen"> · {t('seen {time}', { time: new Date(s.last_seen_at).toLocaleTimeString(locale()) })}</small>
                                     )}
@@ -878,7 +894,7 @@ function Dashboard({ session, profile, onLogout }) {
                 {/* Last Alert Time */}
                 {outlet.last_alert_time && (
                   <div className="last-update">
-                    <span>{t('Last update')}</span>{new Date(outlet.last_alert_time).toLocaleString(locale())}
+                    <span>{t('Last alert')}</span>{new Date(outlet.last_alert_time).toLocaleString(locale())}
                   </div>
                 )}
               </div>
